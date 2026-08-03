@@ -4,12 +4,11 @@
   "description": "React + Vite Web UI for Pi Coding Agent",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js & cd client && npm run dev",
+    "start": "npm run build && node server.js",
+    "dev": "echo '需要两个终端:\\n  终端1: npm run dev:server\\n  终端2: npm run dev:client\\n  然后访问 http://localhost:5173'",
     "dev:server": "node server.js",
     "dev:client": "cd client && npm run dev",
-    "build": "cd client && npm run build",
-    "prod": "cd client && npm run build && cd .. && node server.js"
+    "build": "cd client && npm run build"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
