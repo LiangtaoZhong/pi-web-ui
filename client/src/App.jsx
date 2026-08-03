@@ -167,6 +167,16 @@ export default function App() {
     }
   }, [sid]);
 
+  // Stable callbacks so ChatArea's socket effect doesn't re-run on every render
+  const handleModelsLoaded = useCallback((m, cur) => {
+    if (m) setModels(m);
+    if (cur) setModel(cur);
+  }, []);
+  const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
+  const handleRename = useCallback((currentName) => {
+    if (sid) setRenamePrompt({ id: sid, name: currentName });
+  }, [sid]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -188,7 +198,7 @@ export default function App() {
           onSelect={setSid}
           mode={mode}
           onToggleTheme={toggleTheme}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={handleOpenSettings}
         />
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -196,13 +206,13 @@ export default function App() {
             <ChatArea
               sid={sid}
               addToast={addToast}
-              mode={mode}
               onToggleTheme={toggleTheme}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={handleOpenSettings}
               models={models}
               model={model}
-              onModelsLoaded={(m, cur) => { if (m) setModels(m); if (cur) setModel(cur); }}
+              onModelsLoaded={handleModelsLoaded}
               onSelectModel={onSelectModel}
+              onRename={handleRename}
             />
           ) : (
             <Box

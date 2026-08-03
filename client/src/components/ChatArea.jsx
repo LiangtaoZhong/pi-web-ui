@@ -42,6 +42,14 @@ function fmtTokens(n) {
   return String(n);
 }
 
+// 简短显示工作区路径（保留最后两段）
+function shortPath(p) {
+  if (!p || p === "/") return "/";
+  const parts = p.split("/").filter(Boolean);
+  if (parts.length <= 2) return p;
+  return "…/" + parts.slice(-2).join("/");
+}
+
 export default function ChatArea({
   sid, addToast, onRename,
   onOpenSettings, models, model, onModelsLoaded, onSelectModel,
@@ -59,6 +67,7 @@ export default function ChatArea({
   // 命令补全
   const [commands, setCommands] = useState([]);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdIndex, setCmdIndex] = useState(0);
   const inputRef = useRef(null);
 
   const bottomRef = useRef(null);
@@ -398,27 +407,42 @@ export default function ChatArea({
   function pickCmd(c) {
     setInput(`/${c.name} `);
     setCmdOpen(false);
+    setCmdIndex(0);
     inputRef.current?.focus();
   }
 
   function onInputChange(v) {
     setInput(v);
-    if (v.startsWith("/") && !v.includes(" ")) setCmdOpen(true);
-    else setCmdOpen(false);
+    if (v.startsWith("/") && !v.includes(" ")) {
+      setCmdOpen(true);
+      setCmdIndex(0);
+    } else {
+      setCmdOpen(false);
+    }
   }
 
+  // 当前高亮的命令索引（供上下键导航）
+  const activeIndex = Math.min(cmdIndex, Math.max(0, filteredCmds.length - 1));
+
+
   function onKeyDown(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "ArrowDown" && cmdOpen && filteredCmds.length > 0) {
+      e.preventDefault();
+      setCmdIndex((i) => (i + 1) % filteredCmds.length);
+    } else if (e.key === "ArrowUp" && cmdOpen && filteredCmds.length > 0) {
+      e.preventDefault();
+      setCmdIndex((i) => (i - 1 + filteredCmds.length) % filteredCmds.length);
+    } else if (e.key === "Enter" && !e.shiftKey) {
       if (cmdOpen && filteredCmds.length > 0) {
         e.preventDefault();
-        pickCmd(filteredCmds[0]);
+        pickCmd(filteredCmds[activeIndex]);
         return;
       }
       e.preventDefault();
       send();
     } else if (e.key === "Tab" && cmdOpen && filteredCmds.length > 0) {
       e.preventDefault();
-      pickCmd(filteredCmds[0]);
+      pickCmd(filteredCmds[activeIndex]);
     } else if (e.key === "Escape" && cmdOpen) {
       e.preventDefault();
       setCmdOpen(false);
@@ -464,20 +488,6 @@ export default function ChatArea({
           {name || "Session"}
         </Typography>
 
-        <Chip
-          icon={<FolderIcon sx={{ fontSize: 13 }} />}
-          label={workspace || "/"}
-          size="small"
-          variant="outlined"
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("openBrowser", { detail: workspace }))
-          }
-          sx={{
-            maxWidth: 220,
-            "& .MuiChip-label": { fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" },
-            cursor: "pointer",
-          }}
-        />
         <Chip
           label={live ? "streaming" : "idle"}
           size="small"
@@ -591,8 +601,20 @@ export default function ChatArea({
                 }}
               >
                 <List dense disablePadding>
-                  {filteredCmds.map((c) => (
-                    <ListItemButton key={c.name} onClick={() => pickCmd(c)} sx={{ px: 1.5, py: 0.5 }}>
+                  {filteredCmds.map((c, idx) => (
+                    <ListItemButton
+                      key={c.name}
+                      selected={idx === activeIndex}
+                      onClick={() => pickCmd(c)}
+                      onMouseEnter={() => setCmdIndex(idx)}
+                      sx={{
+                        px: 1.5,
+                        py: 0.5,
+                        "&.Mui-selected": {
+                          bgcolor: "action.selected",
+                        },
+                      }}
+                    >
                       <ListItemIcon sx={{ minWidth: 30 }}>
                         <CommandIcon sx={{ fontSize: 16, color: "primary.main" }} />
                       </ListItemIcon>
@@ -645,6 +667,29 @@ export default function ChatArea({
               <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.65rem", flex: 1 }}>
                 Enter 发送 · Shift+Enter 换行 · / 命令
               </Typography>
+
+              <Tooltip title="切换工作区">
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent("openBrowser", { detail: workspace }))
+                  }
+                  startIcon={<FolderIcon sx={{ fontSize: 13 }} />}
+                  sx={{
+                    color: "text.secondary",
+                    fontSize: "0.7rem",
+                    py: 0.25,
+                    minWidth: 0,
+                    maxWidth: 180,
+                    "& .MuiButton-startIcon": { mr: 0.5 },
+                  }}
+                >
+                  <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {shortPath(workspace)}
+                  </Box>
+                </Button>
+              </Tooltip>
 
               {models.length > 0 && (
                 <>
@@ -742,7 +787,7 @@ export default function ChatArea({
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ fontSize: "0.65rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              sx={{ fontSize: "0.65rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140 }}
             >
               {model || "-"}
             </Typography>
@@ -759,7 +804,7 @@ export default function ChatArea({
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
               <MemoryIcon sx={{ fontSize: 13, color: "text.secondary" }} />
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem", whiteSpace: "nowrap" }}>
-                {ctx ? `${ctx.percent}% · ${fmtTokens(ctx.tokens)}/${fmtTokens(ctx.contextWindow)}` : "上下文 -"}
+                {ctx ? `${(ctx.percent ?? 0).toFixed(1)}%` : "上下文 -"}
               </Typography>
             </Box>
           </Tooltip>
