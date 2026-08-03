@@ -551,7 +551,7 @@ export default function ChatArea({
             alignItems: "center",
           }}
         >
-          <Box sx={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box sx={{ width: "100%", maxWidth: 768, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
             {allMessages.length === 0 ? (
               <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 10 }}>
                 <Typography variant="body2" color="text.disabled">
@@ -583,7 +583,7 @@ export default function ChatArea({
           bgcolor: "background.default",
         }}
       >
-        <Box sx={{ width: "100%", maxWidth: 760, mx: "auto" }}>
+        <Box sx={{ width: "100%", maxWidth: 768, mx: "auto" }}>
           {imgs.length > 0 && (
             <Box sx={{ display: "flex", gap: 0.5, mb: 1, flexWrap: "wrap" }}>
               {imgs.map((img, i) => (
@@ -663,15 +663,19 @@ export default function ChatArea({
               </Paper>
             )}
 
-            {/* 胶囊输入框 */}
+            {/* Claude 风格输入框：圆角矩形、细边框、聚焦橙边 */}
             <Paper
               variant="outlined"
-              sx={{
-                borderRadius: 3.5,
+              sx={(theme) => ({
+                borderRadius: "16px",
                 borderColor: "divider",
-                "&:focus-within": { borderColor: "primary.main", boxShadow: 2 },
+                bgcolor: "background.paper",
+                "&:focus-within": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 0 1px " + theme.palette.primary.main,
+                },
                 transition: "border-color .2s, box-shadow .2s",
-              }}
+              })}
             >
               <TextField
                 inputRef={inputRef}

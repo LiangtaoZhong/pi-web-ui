@@ -1,0 +1,45 @@
+/* Anthropic 品牌字体（来自 claude.ai 设计系统） */
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("./cc27851ad-DDVos-BJ.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("./c9d3a3a49-CJtkx3-S.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("./c66fc489e-2VcCjn5t.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("./cc410af59-Dcb-9NUS.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("./c5dbe0935-CQcSkHaI.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("./c2f08283e-CZqJpOsc.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}

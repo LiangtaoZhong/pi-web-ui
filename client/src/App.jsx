@@ -7,6 +7,7 @@ import {
   Alert,
 } from "@mui/material";
 import socket from "./hooks/useSocket";
+import { claudeTokens, fontSans, fontSerif, fontMono } from "./theme/tokens";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import FileBrowser from "./components/FileBrowser";
@@ -21,33 +22,35 @@ function getInitialMode() {
   return localStorage.getItem(LS_THEME) || "dark";
 }
 
-// Claude-style palette
+// Claude 设计系统（取自 claude.ai 分享页 CSS 变量）
 function buildTheme(mode) {
+  const t = claudeTokens[mode];
+  const brand = t.brand100;
+  const border = mode === "dark" ? "rgba(247,247,242,0.12)" : "rgba(30,30,29,0.15)";
   return createTheme({
     palette: {
       mode,
-      ...(mode === "dark"
-        ? {
-            background: { default: "#262624", paper: "#2E2E2C" },
-            divider: "rgba(255,255,255,0.09)",
-            primary: { main: "#D97757", light: "#E69A80", dark: "#C15F3C" },
-            text: { primary: "#EDEDEA", secondary: "#A8A8A3" },
-          }
-        : {
-            background: { default: "#FEFEFC", paper: "#FFFFFF" },
-            divider: "rgba(0,0,0,0.08)",
-            primary: { main: "#C15F3C", light: "#D97757", dark: "#A84E2F" },
-            text: { primary: "#1F1F1E", secondary: "#6E6E69" },
-          }),
+      background: { default: t.bg100, paper: t.bg000 },
+      divider: border,
+      primary: { main: brand, light: t.brand200, dark: t.brand000 },
+      text: { primary: t.text000, secondary: t.text400, disabled: t.text500 },
+      error: { main: t.danger },
+      success: { main: t.success },
+      warning: { main: t.warning },
     },
-    shape: { borderRadius: 10 },
+    shape: { borderRadius: 8 },
     typography: {
-      fontFamily:
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
+      fontFamily: fontSans,
+      body2: { fontSize: "0.875rem" },
     },
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          ":root": {
+            "--mui-fontFamilies-sans": fontSans,
+            "--mui-fontFamilies-serif": fontSerif,
+            "--mui-fontFamilies-monospace": fontMono,
+          },
           "::-webkit-scrollbar": { width: 5, height: 5 },
           "::-webkit-scrollbar-track": { background: "transparent" },
           "::-webkit-scrollbar-thumb": {
@@ -62,6 +65,18 @@ function buildTheme(mode) {
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: { root: { textTransform: "none" } },
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            bgcolor: mode === "dark" ? "hsl(48 33.3% 97.1%)" : "hsl(60 2.6% 7.6%)",
+            color: mode === "dark" ? "hsl(60 2.6% 7.6%)" : "hsl(48 33.3% 97.1%)",
+            fontSize: 12,
+            borderRadius: "6px",
+            px: 1.5,
+            py: 0.75,
+          },
+        },
       },
     },
   });

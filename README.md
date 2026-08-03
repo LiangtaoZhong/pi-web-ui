@@ -1,10 +1,11 @@
 # Pi Web UI
 
-基于 **React 19 + Vite + Material UI 9** 的 [Pi Coding Agent](https://github.com/badlogic/pi-coding-agent) Web 聊天界面。后端为 Express + Socket.IO，通过 `pi --mode rpc` 子进程与 Pi 交互。UI 采用 Claude 风格：居中阅读列、无气泡的助手消息流、底部胶囊输入框。
+基于 **React 19 + Vite + Material UI 9** 的 [Pi Coding Agent](https://github.com/badlogic/pi-coding-agent) Web 聊天界面。后端为 Express + Socket.IO，通过 `pi --mode rpc` 子进程与 Pi 交互。UI 复刻 claude.ai 设计语言：Anthropic Sans / Serif / Mono 品牌字体、Claude 暖色板（亮/暗）、768px 居中阅读列、无气泡的衬线助手消息流、右对齐软气泡用户消息、底部圆角输入框。
 
 ## ✨ 功能
 
 - 💬 **AI 对话**：流式输出，markdown / 富文本渲染（代码块 + 一键复制、表格、任务列表）
+- 🎨 **Claude 设计系统**：Anthropic Sans/Serif/Mono 字体（自托管 woff2）、Claude 暖色板、768px 阅读列、分隔线风格表格、灰底代码块外壳
 - 🧠 **思考过程**：默认折叠的紧凑细条；思考中 / 工具运行时显示循环动画
 - 🛠️ **工具调用**：bash 等工具显示为单行工具条（图标 + `$ 命令` + 状态），点击展开参数与输出
 - 📁 **工作区选择**：内置文件浏览器，输入框下方快捷切换工作区
@@ -74,6 +75,8 @@ server.js                  Express + Socket.IO 后端
 client/                    React 19 + Vite + MUI 9 前端
 ├── src/components/        Sidebar / ChatArea / MessageBubble / Markdown /
 │                          FileBrowser / SettingsDialog / Toast
+├── src/theme/tokens.js    Claude 设计 token（亮/暗色板、字体栈）
+├── src/assets/fonts/      Anthropic Sans / Serif / Mono（自托管 woff2）
 └── 构建产物 → public/      由 server.js 托管（不提交 git）
 ```
 
@@ -89,5 +92,6 @@ client/                    React 19 + Vite + MUI 9 前端
 
 ## 📜 版本历史
 
+- `v2.2.0` — 迁移 claude.ai 设计系统：Anthropic Sans/Serif/Mono 字体、Claude 暖色板（亮/暗）、768px 阅读列、用户软气泡 + 助手衬线无气泡、分隔线风格表格、灰色代码块外壳、圆角输入框
 - `v2.1.0` — Claude 风格 UI、统一设置入口、模型切换在输入框、命令面板键盘导航
 - `v2.0.0` — MUI 重构：聊天、工作区、会话 CRUD、持久化、markdown、Skills/MCP 管理

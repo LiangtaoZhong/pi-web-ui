@@ -166,7 +166,7 @@ function ToolCallBlock({ blk }) {
         <Typography
           variant="caption"
           sx={{
-            fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+            fontFamily: "var(--mui-fontFamilies-monospace)",
             fontSize: "0.7rem",
             fontWeight: 500,
             whiteSpace: "nowrap",
@@ -212,7 +212,7 @@ function ToolCallBlock({ blk }) {
                 sx={{
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-all",
-                  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+                  fontFamily: "var(--mui-fontFamilies-monospace)",
                   fontSize: "0.7rem",
                   color: "text.secondary",
                 }}
@@ -228,14 +228,14 @@ function ToolCallBlock({ blk }) {
                 py: 0.75,
                 maxHeight: 240,
                 overflow: "auto",
-                bgcolor: theme.palette.mode === "dark" ? "#1a1d2e" : "grey.100",
+                bgcolor: theme.palette.mode === "dark" ? "hsl(30 3.3% 11.8%)" : "grey.100",
               })}
             >
               <Typography
                 variant="caption"
                 sx={{
                   whiteSpace: "pre-wrap",
-                  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+                  fontFamily: "var(--mui-fontFamilies-monospace)",
                   fontSize: "0.72rem",
                   lineHeight: 1.5,
                 }}
@@ -306,15 +306,19 @@ const MessageBubble = memo(function MessageBubble({ msg }) {
       {isUser ? (
         <Paper
           elevation={0}
-          sx={{
-            maxWidth: "88%",
-            px: 1.5,
-            py: 0.9,
-            borderRadius: 3,
-            bgcolor: "primary.main",
-            color: "primary.contrastText",
-            lineHeight: 1.7,
-            fontSize: "0.875rem",
+          sx={(theme) => {
+            const dark = theme.palette.mode === "dark";
+            return {
+              maxWidth: "88%",
+              px: 1.5,
+              py: 1,
+              borderRadius: "12px 12px 3px 12px",
+              bgcolor: dark ? "hsl(30 3.3% 11.8%)" : "hsl(53 28.6% 94.5%)",
+              color: "text.primary",
+              lineHeight: 1.5,
+              fontSize: "14px",
+              "& p": { m: 0 },
+            };
           }}
         >
           <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
