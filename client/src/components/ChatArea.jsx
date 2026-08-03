@@ -30,6 +30,7 @@ import {
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
+import RightNav from "./RightNav";
 import { UnfoldMore as DragHandleIcon } from "@mui/icons-material";
 
 function contentSig(content) {
@@ -481,14 +482,21 @@ export default function ChatArea({
     if (text && text !== "(image)") userQuestions.push({ text: text.slice(0, 60), idx });
   });
 
-  // ── 输入框上下拖拽拉升 ──────────────────────────────────────────────
+  // 滚动定位到某条消息（右侧提问导航点击跳转）
+  const scrollToMsg = useCallback((idx) => {
+    const el = document.getElementById(`chat-msg-${idx}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  // ── 输入框上下拖拽拉升（手柄在顶部，向上拖变大）────────────────────
   function onDragStart(e) {
     e.preventDefault();
     const ta = inputRef.current;
     const startY = e.clientY;
     const startH = ta ? ta.getBoundingClientRect().height : 56;
     function move(ev) {
-      const h = Math.min(Math.max(startH + (ev.clientY - startY), 44), 320);
+      // 向上拖动（clientY 减小）→ 高度增加；向下 → 高度减小
+      const h = Math.min(Math.max(startH + (startY - ev.clientY), 44), 320);
       manualHRef.current = Math.round(h);
       if (ta) {
         ta.style.height = manualHRef.current + "px";
@@ -597,54 +605,18 @@ export default function ChatArea({
                 </Typography>
               </Box>
             ) : (
-              allMessages.map((m, i) => {
-                // 用户消息的提问序号（融入消息流，替代右侧悬浮导航）
-                const qNum = m.role === "user" ? userQuestions.findIndex((q) => q.idx === i) : -1;
-                return (
-                  <div key={m.streaming ? "live" : `msg-${i}`} id={`chat-msg-${i}`}>
-                    {qNum >= 0 && (
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                          mb: 0.5,
-                          userSelect: "none",
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            width: 15,
-                            height: 15,
-                            borderRadius: "50%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            bgcolor: "primary.main",
-                            color: "#fff",
-                            fontSize: 9,
-                            fontWeight: 700,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {qNum + 1}
-                        </Box>
-                        <Typography
-                          variant="caption"
-                          sx={{ fontSize: "0.65rem", color: "text.disabled", letterSpacing: 0.5 }}
-                        >
-                          提问 {qNum + 1}
-                        </Typography>
-                      </Box>
-                    )}
-                    <MessageBubble msg={m} />
-                  </div>
-                );
-              })
+              allMessages.map((m, i) => (
+                <div key={m.streaming ? "live" : `msg-${i}`} id={`chat-msg-${i}`}>
+                  <MessageBubble msg={m} />
+                </div>
+              ))
             )}
             <div ref={bottomRef} />
           </Box>
         </Box>
+
+        {/* 右侧提问导航（悬停展开的圆角卡片） */}
+        <RightNav questions={userQuestions} onJump={scrollToMsg} />
       </Box>
 
       {/* Input */}
@@ -751,6 +723,27 @@ export default function ChatArea({
                 transition: "border-color .2s, box-shadow .2s",
               })}
             >
+              {/* 顶部拖拽手柄：向上拖输入框变大（双击还原） */}
+              <Box
+                onMouseDown={onDragStart}
+                onDoubleClick={resetInputHeight}
+                title="拖动调整高度（双击还原）"
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 12,
+                  cursor: "ns-resize",
+                  color: "text.disabled",
+                  opacity: 0.45,
+                  "&:hover": { opacity: 1, color: "primary.main" },
+                  transition: "opacity .15s, color .15s",
+                  userSelect: "none",
+                  borderBottom: "none",
+                }}
+              >
+                <DragHandleIcon sx={{ fontSize: 14 }} />
+              </Box>
               <TextField
                 inputRef={inputRef}
                 value={input}
@@ -766,6 +759,7 @@ export default function ChatArea({
                 InputProps={{ disableUnderline: true }}
                 sx={{
                   px: 1.5,
+                  pb: 1,
                   "& .MuiInputBase-root": { fontSize: "0.9rem", py: 1 },
                   "& textarea": {
                     overflowX: "hidden",
@@ -774,26 +768,6 @@ export default function ChatArea({
                   },
                 }}
               />
-              {/* 拖拽手柄：上下自由拉升输入框高度（双击还原） */}
-              <Box
-                onMouseDown={onDragStart}
-                onDoubleClick={resetInputHeight}
-                title="拖动调整高度（双击还原）"
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 12,
-                  cursor: "ns-resize",
-                  color: "text.disabled",
-                  opacity: 0.5,
-                  "&:hover": { opacity: 1, color: "primary.main" },
-                  transition: "opacity .15s, color .15s",
-                  userSelect: "none",
-                }}
-              >
-                <DragHandleIcon sx={{ fontSize: 14 }} />
-              </Box>
             </Paper>
 
             {/* 底部工具行：提示 + 模型切换 + 发送 */}
