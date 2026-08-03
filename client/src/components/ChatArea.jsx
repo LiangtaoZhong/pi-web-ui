@@ -31,6 +31,7 @@ import {
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
 import RightNav from "./RightNav";
+import FileViewer from "./FileViewer";
 import { UnfoldMore as DragHandleIcon } from "@mui/icons-material";
 
 function contentSig(content) {
@@ -55,6 +56,7 @@ function shortPath(p) {
 export default function ChatArea({
   sid, addToast, onRename,
   onOpenSettings, models, model, onModelsLoaded, onSelectModel,
+  viewingFile, onCloseViewer,
 }) {
   const [msgs, setMsgs] = useState([]);
   const [name, setName] = useState("");
@@ -230,6 +232,10 @@ export default function ChatArea({
       }
     }
 
+    function onContextAdded(d) {
+      addToast("🤖 已加入上下文：" + (d.path || ""));
+    }
+
     function onResponse(resp) {
       if (resp?.command === "get_state") {
         const st = resp.data;
@@ -270,6 +276,7 @@ export default function ChatArea({
     socket.on("pi_error", onErr);
     socket.on("pi_disconnected", onDC);
     socket.on("workspace_updated", onWsUpd);
+    socket.on("context_added", onContextAdded);
 
     // Fetch model info + commands, and poll context usage every 5s.
     // The freshly-spawned pi process needs a moment to become ready, so
@@ -317,6 +324,7 @@ export default function ChatArea({
       socket.off("pi_error", onErr);
       socket.off("pi_disconnected", onDC);
       socket.off("workspace_updated", onWsUpd);
+      socket.off("context_added", onContextAdded);
     };
   }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults, onModelsLoaded]);
 
@@ -361,6 +369,16 @@ export default function ChatArea({
   }
 
   // ── Actions ───────────────────────────────────────────────────────────
+  function appendToInput(text) {
+    if (!text) return;
+    setInput((prev) => {
+      const base = prev.trimEnd();
+      if (!base) return text + "\n";
+      return base + "\n\n```\n" + text + "\n```\n";
+    });
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
   function send() {
     const txt = input.trim();
     if ((!txt && !imgs.length) || !sid || live) return;
@@ -576,7 +594,7 @@ export default function ChatArea({
         </Tooltip>
       </Box>
 
-      {/* Messages */}
+      {/* Messages / 代码查看器（输入框保持底部） */}
       <Box
         sx={{
           flex: 1,
@@ -586,6 +604,10 @@ export default function ChatArea({
           flexDirection: "column",
         }}
       >
+        {viewingFile ? (
+          <FileViewer path={viewingFile} onClose={onCloseViewer} onAddToInput={appendToInput} />
+        ) : (
+        <>
         <Box
           sx={{
             flex: 1,
@@ -617,6 +639,8 @@ export default function ChatArea({
 
         {/* 右侧提问导航（悬停展开的圆角卡片） */}
         <RightNav questions={userQuestions} onJump={scrollToMsg} />
+        </>
+        )}
       </Box>
 
       {/* Input */}

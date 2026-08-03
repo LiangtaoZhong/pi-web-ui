@@ -26,8 +26,10 @@ import {
   Chat as ChatIcon,
   MenuOpen as CollapseIcon,
   Menu as ExpandIcon,
+  Folder as FolderTabIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
+import FileBrowserSidebar from "./FileBrowserSidebar";
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED = 60;
@@ -66,12 +68,36 @@ function RenameDialog({ open, initial, onClose, onConfirm }) {
   );
 }
 
-export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings }) {
+export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings, onOpenFile }) {
   const [list, setList] = useState([]);
   const [renameId, setRenameId] = useState(null);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(LS_SIDEBAR) === "1");
+  const [tab, setTab] = useState("sessions");
+  const [workspace, setWorkspace] = useState("");
   const width = collapsed ? DRAWER_COLLAPSED : DRAWER_WIDTH;
 
+  // 同步当前工作区（文件浏览器根目录）
+  useEffect(() => {
+    function onHistory(d) {
+      if (d.sessionId === sid && d.workspace) setWorkspace(d.workspace);
+    }
+    function onWsUpd(d) {
+      if (d.sessionId === sid && d.workspace) setWorkspace(d.workspace);
+    }
+    socket.on("session_history", onHistory);
+    socket.on("workspace_updated", onWsUpd);
+    fetch("/api/sessions")
+      .then((r) => r.json())
+      .then((list) => {
+        const s = list.find((x) => x.id === sid);
+        if (s?.workspace) setWorkspace(s.workspace);
+      })
+      .catch(() => {});
+    return () => {
+      socket.off("session_history", onHistory);
+      socket.off("workspace_updated", onWsUpd);
+    };
+  }, [sid]);
   function toggleCollapse() {
     setCollapsed((c) => {
       localStorage.setItem(LS_SIDEBAR, c ? "0" : "1");
@@ -197,6 +223,26 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
                   <ExpandIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
+              <Box sx={{ borderTop: 1, borderColor: "divider", pt: 0.75, mt: 0.5, display: "flex", flexDirection: "column", gap: 0.5, width: "100%" }}>
+                <Tooltip title="会话" placement="right">
+                  <IconButton
+                    size="small"
+                    onClick={() => setTab("sessions")}
+                    sx={{ color: tab === "sessions" ? "primary.main" : "text.secondary", bgcolor: tab === "sessions" ? "action.selected" : "transparent" }}
+                  >
+                    <ChatIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="文件" placement="right">
+                  <IconButton
+                    size="small"
+                    onClick={() => setTab("files")}
+                    sx={{ color: tab === "files" ? "primary.main" : "text.secondary", bgcolor: tab === "files" ? "action.selected" : "transparent" }}
+                  >
+                    <FolderTabIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </>
           ) : (
             <>
@@ -220,7 +266,58 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
 
         <Divider />
 
-        {/* Session list */}
+        {/* Tab 切换：会话 / 文件（展开时） */}
+        {!collapsed && (
+          <Box sx={{ display: "flex", p: 0.75, gap: 0.5 }}>
+            <Box
+              onClick={() => setTab("sessions")}
+              sx={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 0.5,
+                py: 0.6,
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: "0.72rem",
+                color: tab === "sessions" ? "text.primary" : "text.secondary",
+                bgcolor: tab === "sessions" ? (mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
+                transition: "background-color .15s",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <ChatIcon sx={{ fontSize: 14 }} /> 会话
+            </Box>
+            <Box
+              onClick={() => setTab("files")}
+              sx={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 0.5,
+                py: 0.6,
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: "0.72rem",
+                color: tab === "files" ? "text.primary" : "text.secondary",
+                bgcolor: tab === "files" ? (mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
+                transition: "background-color .15s",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <FolderTabIcon sx={{ fontSize: 14 }} /> 文件
+            </Box>
+          </Box>
+        )}
+
+        {/* 内容区：会话列表 / 文件浏览器 */}
+        {tab === "files" && !collapsed ? (
+          <FileBrowserSidebar workspace={workspace} sid={sid} onOpenFile={onOpenFile} />
+        ) : (
         <Box sx={{ flex: 1, overflow: "auto", py: 0.5, ...(collapsed && { display: "none" }) }}>
           {list.length === 0 ? (
             <Box sx={{ p: 3, textAlign: "center" }}>
@@ -303,6 +400,7 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
             </List>
           )}
         </Box>
+        )}
 
         <Divider />
 

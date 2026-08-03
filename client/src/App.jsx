@@ -91,6 +91,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState([]);
   const [model, setModel] = useState("");
+  const [viewingFile, setViewingFile] = useState(null);
   const { toasts, addToast } = useToasts();
 
   const theme = useMemo(() => buildTheme(mode), [mode]);
@@ -214,6 +215,7 @@ export default function App() {
           mode={mode}
           onToggleTheme={toggleTheme}
           onOpenSettings={handleOpenSettings}
+          onOpenFile={setViewingFile}
         />
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -228,6 +230,8 @@ export default function App() {
               onModelsLoaded={handleModelsLoaded}
               onSelectModel={onSelectModel}
               onRename={handleRename}
+              viewingFile={viewingFile}
+              onCloseViewer={() => setViewingFile(null)}
             />
           ) : (
             <Box

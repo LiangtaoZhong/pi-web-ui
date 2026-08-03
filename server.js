@@ -43,6 +43,17 @@ function sanitizeWorkspace(ws) {
   return ws.replace(/[^a-zA-Z0-9_\-\.]/g, "_").replace(/^\/+/, "").replace(/\/+/g, "_") || "root";
 }
 
+// Security: ensure a resolved path stays inside the workspace root
+function isWithinRoot(target, root) {
+  try {
+    const t = path.resolve(String(target));
+    const r = path.resolve(String(root));
+    return t === r || t.startsWith(r + path.sep);
+  } catch {
+    return false;
+  }
+}
+
 function sessionDir(workspace) {
   const dir = path.join(SESSIONS_DIR, sanitizeWorkspace(workspace));
   fs.mkdirSync(dir, { recursive: true });
@@ -413,7 +424,7 @@ app.patch("/api/sessions/:id", (req, res) => {
   res.json({ success: true, name: meta.name });
 });
 
-// Browse filesystem
+// Browse filesystem (directories + files)
 app.get("/api/browse", (req, res) => {
   let dirPath;
   try {
@@ -425,9 +436,36 @@ app.get("/api/browse", (req, res) => {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     const items = entries
-      .filter(e => e.isDirectory() && !e.name.startsWith("."))
-      .map(e => ({ name: e.name, type: "directory", path: path.join(dirPath, e.name) }));
-    items.sort((a, b) => a.name.localeCompare(b.name));
+      .filter((e) => !e.name.startsWith("."))
+      .map((e) => {
+        const full = path.join(dirPath, e.name);
+        if (e.isDirectory()) {
+          return { name: e.name, type: "directory", path: full };
+        }
+        if (e.isFile()) {
+          try {
+            const st = fs.statSync(full);
+            return {
+              name: e.name,
+              type: "file",
+              path: full,
+              size: st.size,
+              ext: path.extname(e.name).slice(1).toLowerCase(),
+            };
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      })
+      .filter(Boolean);
+    items.sort((a, b) =>
+      a.type === b.type
+        ? a.name.localeCompare(b.name)
+        : a.type === "directory"
+          ? -1
+          : 1
+    );
 
     const parent = path.dirname(dirPath);
     res.json({
@@ -442,6 +480,33 @@ app.get("/api/browse", (req, res) => {
     });
   } catch (e) {
     res.status(400).json({ error: e.message, current: dirPath, parent: path.dirname(dirPath), items: [] });
+  }
+});
+
+// Read file content for the code viewer (text only, max 2MB)
+app.get("/api/file", (req, res) => {
+  let filePath;
+  try {
+    filePath = path.resolve(String(req.query.path || ""));
+  } catch (e) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+  try {
+    const st = fs.statSync(filePath);
+    if (!st.isFile()) return res.status(400).json({ error: "Not a file" });
+    if (st.size > 2 * 1024 * 1024) {
+      return res.status(413).json({ error: "File too large (max 2MB)", size: st.size });
+    }
+    const buf = fs.readFileSync(filePath);
+    const head = buf.subarray(0, 8192);
+    if (head.includes(0)) {
+      return res.json({ binary: true, size: st.size, path: filePath, language: null, content: null });
+    }
+    const content = buf.toString("utf8");
+    const ext = path.extname(filePath).slice(1).toLowerCase();
+    res.json({ binary: false, size: st.size, path: filePath, language: ext || null, content });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -709,6 +774,28 @@ io.on("connection", (socket) => {
 
   socket.on("get_commands", ({ sessionId }) => {
     if (!sendRPC(sessionId, { type: "get_commands" })) socket.emit("pi_error", { error: "Cannot list commands" });
+  });
+
+  // Let the AI read a file/folder into context: run `cat -n` / `ls -la` via
+  // RPC bash. The BashExecutionMessage is injected into the LLM context on the
+  // next prompt automatically. Paths are constrained to the session workspace.
+  socket.on("read_context", ({ sessionId, path: p, isDir }) => {
+    const meta = sessions.get(sessionId);
+    if (!meta) { socket.emit("pi_error", { error: "Session not found" }); return; }
+    if (!p) { socket.emit("pi_error", { error: "No path given" }); return; }
+    if (!isWithinRoot(p, meta.workspace)) {
+      socket.emit("pi_error", { error: "Path is outside the workspace" });
+      return;
+    }
+    const safe = String(p).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const cmd = isDir
+      ? `ls -la "${safe}" | head -200`
+      : `cat -n "${safe}" 2>/dev/null | head -400 || head -400 "${safe}"`;
+    if (!sendRPC(sessionId, { type: "bash", command: cmd })) {
+      socket.emit("pi_error", { error: "Pi process not running" });
+      return;
+    }
+    socket.emit("context_added", { sessionId, path: String(p), isDir: !!isDir });
   });
 
   socket.on("disconnect", () => {
