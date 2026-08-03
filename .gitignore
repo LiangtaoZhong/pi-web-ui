@@ -1,3 +1,32 @@
+# ─── Dependencies ───────────────────────────────────────────────
 node_modules/
+client/node_modules/
+
+# ─── Build output (regenerate with `npm run build`) ─────────────
 dist/
+client/dist/
+public/assets/
+
+# ─── Secrets — NEVER commit these ────────────────────────────────
+# Pi agent credentials live in ~/.pi/agent/auth.json (outside this repo)
+.env
+.env.*
+*.pem
+auth.json
+credentials.json
+secrets.json
+
+# ─── Logs ────────────────────────────────────────────────────────
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Editor / OS ─────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.swp
+*.swo
