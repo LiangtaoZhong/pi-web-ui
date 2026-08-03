@@ -288,11 +288,14 @@ const MessageBubble = memo(function MessageBubble({ msg }) {
   const isUser = msg.role === "user";
   const isStreaming = msg.streaming;
 
+  // Claude-style: assistant messages flow full-width without a bubble;
+  // user messages are right-aligned soft bubbles.
   return (
     <Box
       sx={{
         display: "flex",
         justifyContent: isUser ? "flex-end" : "flex-start",
+        width: "100%",
         animation: "msgIn 0.25s ease",
         "@keyframes msgIn": {
           from: { opacity: 0, transform: "translateY(6px)" },
@@ -300,33 +303,39 @@ const MessageBubble = memo(function MessageBubble({ msg }) {
         },
       }}
     >
-      <Paper
-        variant="outlined"
-        elevation={0}
-        sx={{
-          maxWidth: "86%",
-          px: isUser ? 1.5 : 2,
-          py: 1.2,
-          borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-          bgcolor: isUser ? "primary.main" : "background.paper",
-          color: isUser ? "primary.contrastText" : "text.primary",
-          borderColor: isStreaming ? "primary.main" : isUser ? "primary.main" : "divider",
-          ...(isStreaming && {
-            boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
-          }),
-          lineHeight: 1.7,
-          fontSize: "0.875rem",
-          minWidth: 60,
-        }}
-      >
-        {isUser ? (
+      {isUser ? (
+        <Paper
+          elevation={0}
+          sx={{
+            maxWidth: "88%",
+            px: 1.5,
+            py: 0.9,
+            borderRadius: 3,
+            bgcolor: "primary.main",
+            color: "primary.contrastText",
+            lineHeight: 1.7,
+            fontSize: "0.875rem",
+          }}
+        >
           <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {typeof msg.content === "string" ? msg.content : ""}
           </Typography>
-        ) : (
+        </Paper>
+      ) : (
+        <Box
+          sx={{
+            width: "100%",
+            fontSize: "0.925rem",
+            lineHeight: 1.75,
+            color: "text.primary",
+            ...(isStreaming && {
+              "& .bub-body": { borderLeft: 2, borderColor: "primary.main", pl: 1.5, ml: -1.5 },
+            }),
+          }}
+        >
           <ContentBlocks content={msg.content} isStreaming={msg.streaming} />
-        )}
-      </Paper>
+        </Box>
+      )}
     </Box>
   );
 });

@@ -26,6 +26,7 @@ import {
   SmartToy as ModelIcon,
   Memory as MemoryIcon,
   Terminal as CommandIcon,
+  Settings as SettingsIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
@@ -41,7 +42,10 @@ function fmtTokens(n) {
   return String(n);
 }
 
-export default function ChatArea({ sid, addToast, onRename }) {
+export default function ChatArea({
+  sid, addToast, onRename,
+  onOpenSettings, models, model, onModelsLoaded, onSelectModel,
+}) {
   const [msgs, setMsgs] = useState([]);
   const [name, setName] = useState("");
   const [workspace, setWorkspace] = useState("");
@@ -49,8 +53,6 @@ export default function ChatArea({ sid, addToast, onRename }) {
   const [imgs, setImgs] = useState([]);
   const [live, setLive] = useState(false);
   const [streamBlocks, setStreamBlocks] = useState([]);
-  const [model, setModel] = useState("");
-  const [models, setModels] = useState([]);
   const [modelAnchor, setModelAnchor] = useState(null);
   // 上下文窗口统计
   const [ctx, setCtx] = useState(null); // {tokens, contextWindow, percent}
@@ -62,6 +64,8 @@ export default function ChatArea({ sid, addToast, onRename }) {
   const bottomRef = useRef(null);
   const seenSigsRef = useRef(new Set());
   const toolResultsRef = useRef({}); // toolCallId -> {result, isError} for current streaming blocks
+  const modelRef = useRef(model);
+  useEffect(() => { modelRef.current = model; }, [model]);
 
   const scrollDown = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,7 +171,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
           if (ev.message?.role === "assistant") {
             setStreamBlocks([]);
             setLive(true);
-            if (ev.message.model) setModel(ev.message.model);
+            if (ev.message.model) onModelsLoaded(undefined, ev.message.model);
           }
           break;
         case "message_update":
@@ -218,12 +222,10 @@ export default function ChatArea({ sid, addToast, onRename }) {
       if (resp?.command === "get_state") {
         const st = resp.data;
         if (st) {
-          if (st.model?.name) setModel(st.model.name);
-          else if (st.model?.id) setModel(st.model.id);
+          onModelsLoaded(undefined, st.model?.name || st.model?.id || "");
         }
       } else if (resp?.command === "get_available_models") {
-        const list = resp.data?.models || [];
-        setModels(list);
+        onModelsLoaded(resp.data?.models || [], modelRef.current);
       } else if (resp?.command === "get_session_stats" && resp.data) {
         const cu = resp.data.contextUsage;
         if (cu) setCtx({ tokens: cu.tokens, contextWindow: cu.contextWindow, percent: cu.percent });
@@ -232,7 +234,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
         setCommands(list);
       } else if (resp?.command === "set_model" && resp.data) {
         const st = resp.data;
-        setModel(st.name || st.id || "");
+        onModelsLoaded(undefined, st.name || st.id || "");
         addToast("已切换模型: " + (st.name || st.id || ""));
       }
     }
@@ -304,7 +306,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
       socket.off("pi_disconnected", onDC);
       socket.off("workspace_updated", onWsUpd);
     };
-  }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults]);
+  }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults, onModelsLoaded]);
 
   useEffect(() => {
     scrollDown();
@@ -426,7 +428,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
   function selectModel(m) {
     setModelAnchor(null);
     if (!m) return;
-    socket.emit("set_model", { sessionId: sid, provider: m.provider, modelId: m.id });
+    onSelectModel(m);
   }
 
   const allMessages = [...msgs];
@@ -446,6 +448,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
           minHeight: 46,
           borderBottom: 1,
           borderColor: "divider",
+          bgcolor: "background.default",
         }}
       >
         <Tooltip title="重命名会话">
@@ -461,48 +464,8 @@ export default function ChatArea({ sid, addToast, onRename }) {
           {name || "Session"}
         </Typography>
 
-        {models.length > 0 && (
-          <>
-            <Tooltip title="切换模型">
-              <Chip
-                icon={<ModelIcon sx={{ fontSize: 14 }} />}
-                label={model || "模型"}
-                size="small"
-                variant="outlined"
-                deleteIcon={<ArrowDropDownIcon />}
-                onClick={(e) => setModelAnchor(e.currentTarget)}
-                onDelete={(e) => setModelAnchor(e.currentTarget)}
-                sx={{ "& .MuiChip-label": { fontSize: 11, maxWidth: 160 } }}
-              />
-            </Tooltip>
-            <Menu
-              anchorEl={modelAnchor}
-              open={!!modelAnchor}
-              onClose={() => setModelAnchor(null)}
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-              transformOrigin={{ vertical: "top", horizontal: "right" }}
-            >
-              {models.map((m) => (
-                <MenuItem
-                  key={m.provider + "/" + m.id}
-                  selected={model === (m.name || m.id)}
-                  onClick={() => selectModel(m)}
-                >
-                  <ListItemIcon>
-                    <ModelIcon fontSize="small" />
-                  </ListItemIcon>
-                  <Box>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}>{m.name || m.id}</Typography>
-                    <Typography variant="caption" color="text.secondary">{m.provider}</Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Menu>
-          </>
-        )}
-
         <Chip
-          icon={<FolderIcon sx={{ fontSize: 14 }} />}
+          icon={<FolderIcon sx={{ fontSize: 13 }} />}
           label={workspace || "/"}
           size="small"
           variant="outlined"
@@ -510,7 +473,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
             window.dispatchEvent(new CustomEvent("openBrowser", { detail: workspace }))
           }
           sx={{
-            maxWidth: 240,
+            maxWidth: 220,
             "& .MuiChip-label": { fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" },
             cursor: "pointer",
           }}
@@ -534,6 +497,11 @@ export default function ChatArea({ sid, addToast, onRename }) {
             }),
           }}
         />
+        <Tooltip title="设置">
+          <IconButton size="small" onClick={onOpenSettings} sx={{ color: "text.secondary" }}>
+            <SettingsIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Messages */}
@@ -541,131 +509,216 @@ export default function ChatArea({ sid, addToast, onRename }) {
         sx={{
           flex: 1,
           overflow: "auto",
-          p: 2,
+          px: { xs: 1.5, sm: 3 },
+          py: 3,
           display: "flex",
           flexDirection: "column",
-          gap: 2,
+          alignItems: "center",
         }}
       >
-        {allMessages.length === 0 ? (
-          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography variant="body2" color="text.disabled">
-              发送消息开始对话
-            </Typography>
-          </Box>
-        ) : (
-          allMessages.map((m, i) => (
-            <MessageBubble key={m.streaming ? "live" : `msg-${i}`} msg={m} />
-          ))
-        )}
-        <div ref={bottomRef} />
+        <Box sx={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 2 }}>
+          {allMessages.length === 0 ? (
+            <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 10 }}>
+              <Typography variant="body2" color="text.disabled">
+                发送消息开始对话
+              </Typography>
+            </Box>
+          ) : (
+            allMessages.map((m, i) => (
+              <MessageBubble key={m.streaming ? "live" : `msg-${i}`} msg={m} />
+            ))
+          )}
+          <div ref={bottomRef} />
+        </Box>
       </Box>
 
       {/* Input */}
-      <Box sx={{ borderTop: 1, borderColor: "divider", p: 1.5 }}>
-        {imgs.length > 0 && (
-          <Box sx={{ display: "flex", gap: 0.5, mb: 1, flexWrap: "wrap" }}>
-            {imgs.map((img, i) => (
-              <Box key={i} sx={{ position: "relative", width: 48, height: 48 }}>
-                <Avatar
-                  src={`data:${img.mimeType};base64,${img.data}`}
-                  variant="rounded"
-                  sx={{ width: 48, height: 48 }}
-                />
-                <IconButton
-                  size="small"
-                  onClick={() => setImgs((prev) => prev.filter((_, j) => j !== i))}
-                  sx={{
-                    position: "absolute",
-                    top: -4,
-                    right: -4,
-                    width: 16,
-                    height: 16,
-                    bgcolor: "rgba(0,0,0,0.7)",
-                    color: "#fff",
-                    fontSize: 9,
-                    "&:hover": { bgcolor: "rgba(0,0,0,0.9)" },
-                  }}
-                >
-                  ✕
-                </IconButton>
-              </Box>
-            ))}
-          </Box>
-        )}
-
-        <Box sx={{ position: "relative" }}>
-          {cmdOpen && filteredCmds.length > 0 && (
-            <Paper
-              elevation={3}
-              sx={{
-                position: "absolute",
-                bottom: "100%",
-                left: 0,
-                right: 0,
-                mb: 0.5,
-                maxHeight: 240,
-                overflow: "auto",
-                zIndex: 20,
-                borderRadius: 2,
-              }}
-            >
-              <List dense disablePadding>
-                {filteredCmds.map((c) => (
-                  <ListItemButton key={c.name} onClick={() => pickCmd(c)} sx={{ px: 1.5, py: 0.5 }}>
-                    <ListItemIcon sx={{ minWidth: 30 }}>
-                      <CommandIcon sx={{ fontSize: 16, color: "primary.main" }} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={`/${c.name}`}
-                      secondary={c.description || c.source}
-                      slotProps={{
-                        primary: { fontSize: 13, fontWeight: 600, fontFamily: "monospace" },
-                        secondary: { fontSize: 11, noWrap: true },
-                      }}
-                    />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Paper>
+      <Box
+        sx={{
+          borderTop: 1,
+          borderColor: "divider",
+          px: { xs: 1.5, sm: 3 },
+          py: 1.5,
+          bgcolor: "background.default",
+        }}
+      >
+        <Box sx={{ width: "100%", maxWidth: 760, mx: "auto" }}>
+          {imgs.length > 0 && (
+            <Box sx={{ display: "flex", gap: 0.5, mb: 1, flexWrap: "wrap" }}>
+              {imgs.map((img, i) => (
+                <Box key={i} sx={{ position: "relative", width: 48, height: 48 }}>
+                  <Avatar
+                    src={`data:${img.mimeType};base64,${img.data}`}
+                    variant="rounded"
+                    sx={{ width: 48, height: 48 }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => setImgs((prev) => prev.filter((_, j) => j !== i))}
+                    sx={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      width: 16,
+                      height: 16,
+                      bgcolor: "rgba(0,0,0,0.7)",
+                      color: "#fff",
+                      fontSize: 9,
+                      "&:hover": { bgcolor: "rgba(0,0,0,0.9)" },
+                    }}
+                  >
+                    ✕
+                  </IconButton>
+                </Box>
+              ))}
+            </Box>
           )}
 
-          <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
-            <TextField
-              inputRef={inputRef}
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              onBlur={() => setTimeout(() => setCmdOpen(false), 150)}
-              placeholder="输入消息... / 显示命令, Enter 发送, Shift+Enter 换行"
-              multiline
-              maxRows={5}
-              fullWidth
-              size="small"
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
-            />
-            {live ? (
-              <Button
-                variant="contained"
-                color="error"
-                onClick={abort}
-                startIcon={<StopIcon />}
-                sx={{ minWidth: 100, height: 40, borderRadius: 3, fontWeight: 700 }}
+          <Box sx={{ position: "relative" }}>
+            {cmdOpen && filteredCmds.length > 0 && (
+              <Paper
+                elevation={3}
+                sx={{
+                  position: "absolute",
+                  bottom: "100%",
+                  left: 0,
+                  right: 0,
+                  mb: 0.5,
+                  maxHeight: 240,
+                  overflow: "auto",
+                  zIndex: 20,
+                  borderRadius: 2,
+                }}
               >
-                中断
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                onClick={send}
-                disabled={!input.trim() && !imgs.length}
-                startIcon={<SendIcon />}
-                sx={{ minWidth: 90, height: 40, borderRadius: 3, fontWeight: 700 }}
-              >
-                发送
-              </Button>
+                <List dense disablePadding>
+                  {filteredCmds.map((c) => (
+                    <ListItemButton key={c.name} onClick={() => pickCmd(c)} sx={{ px: 1.5, py: 0.5 }}>
+                      <ListItemIcon sx={{ minWidth: 30 }}>
+                        <CommandIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`/${c.name}`}
+                        secondary={c.description || c.source}
+                        slotProps={{
+                          primary: { fontSize: 13, fontWeight: 600, fontFamily: "monospace" },
+                          secondary: { fontSize: 11, noWrap: true },
+                        }}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Paper>
             )}
+
+            {/* 胶囊输入框 */}
+            <Paper
+              variant="outlined"
+              sx={{
+                borderRadius: 3.5,
+                borderColor: "divider",
+                "&:focus-within": { borderColor: "primary.main", boxShadow: 2 },
+                transition: "border-color .2s, box-shadow .2s",
+              }}
+            >
+              <TextField
+                inputRef={inputRef}
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+                onBlur={() => setTimeout(() => setCmdOpen(false), 150)}
+                placeholder="输入消息... / 显示命令, Enter 发送, Shift+Enter 换行"
+                multiline
+                maxRows={6}
+                fullWidth
+                variant="standard"
+                InputProps={{ disableUnderline: true }}
+                sx={{
+                  px: 1.5,
+                  "& .MuiInputBase-root": { fontSize: "0.9rem", py: 1 },
+                }}
+              />
+            </Paper>
+
+            {/* 底部工具行：提示 + 模型切换 + 发送 */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.75 }}>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.65rem", flex: 1 }}>
+                Enter 发送 · Shift+Enter 换行 · / 命令
+              </Typography>
+
+              {models.length > 0 && (
+                <>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={(e) => setModelAnchor(e.currentTarget)}
+                    endIcon={<ArrowDropDownIcon />}
+                    sx={{
+                      color: "text.secondary",
+                      fontSize: "0.7rem",
+                      py: 0.25,
+                      minWidth: 0,
+                    }}
+                  >
+                    {model || "模型"}
+                  </Button>
+                  <Menu
+                    anchorEl={modelAnchor}
+                    open={!!modelAnchor}
+                    onClose={() => setModelAnchor(null)}
+                    anchorOrigin={{ vertical: "top", horizontal: "right" }}
+                    transformOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  >
+                    {models.map((m) => (
+                      <MenuItem
+                        key={m.provider + "/" + m.id}
+                        selected={model === (m.name || m.id)}
+                        onClick={() => selectModel(m)}
+                        sx={{ fontSize: 13 }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 30 }}>
+                          <ModelIcon fontSize="small" />
+                        </ListItemIcon>
+                        {m.name || m.id}
+                        <Typography variant="caption" color="text.disabled" sx={{ ml: 1 }}>
+                          {m.provider}
+                        </Typography>
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </>
+              )}
+
+              {live ? (
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={abort}
+                  size="small"
+                  startIcon={<StopIcon />}
+                  sx={{ borderRadius: 3, fontWeight: 700 }}
+                >
+                  中断
+                </Button>
+              ) : (
+                <IconButton
+                  color="primary"
+                  onClick={send}
+                  disabled={!input.trim() && !imgs.length}
+                  sx={{
+                    bgcolor: "primary.main",
+                    color: "#fff",
+                    "&:hover": { bgcolor: "primary.dark" },
+                    "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "text.disabled" },
+                    borderRadius: 2.5,
+                    width: 34,
+                    height: 34,
+                  }}
+                >
+                  <SendIcon sx={{ fontSize: 17 }} />
+                </IconButton>
+              )}
+            </Box>
           </Box>
         </Box>
       </Box>

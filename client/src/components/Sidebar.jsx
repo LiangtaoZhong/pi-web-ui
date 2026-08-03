@@ -20,18 +20,14 @@ import {
 } from "@mui/material";
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
-  DarkMode as DarkIcon,
-  LightMode as LightIcon,
+  Settings as SettingsIcon,
   Chat as ChatIcon,
-  Public as GlobeIcon,
-  Extension as ExtensionIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 
-const DRAWER_WIDTH = 310;
+const DRAWER_WIDTH = 260;
 
 function RenameDialog({ open, initial, onClose, onConfirm }) {
   const [value, setValue] = useState(initial || "");
@@ -66,7 +62,7 @@ function RenameDialog({ open, initial, onClose, onConfirm }) {
   );
 }
 
-export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenManage }) {
+export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings }) {
   const [list, setList] = useState([]);
   const [renameId, setRenameId] = useState(null);
 
@@ -141,49 +137,31 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenMana
             boxSizing: "border-box",
             borderRight: 1,
             borderColor: "divider",
+            bgcolor: "background.default",
           },
         }}
       >
-        {/* Header */}
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            px: 2,
-            py: 1.5,
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <GlobeIcon sx={{ color: "primary.main", fontSize: 22 }} />
-            <Typography variant="subtitle1" fontWeight={800} color="primary">
-              Pi Web UI
-            </Typography>
-          </Box>
-          <Box>
-            <Tooltip title="Skills / MCP 管理">
-              <IconButton onClick={onOpenManage} size="small" sx={{ mr: 0.5 }}>
-                <ExtensionIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <IconButton onClick={onToggleTheme} size="small">
-              {mode === "dark" ? <LightIcon fontSize="small" /> : <DarkIcon fontSize="small" />}
+        {/* Header / logo */}
+        <Box sx={{ display: "flex", alignItems: "center", px: 2, py: 1.5 }}>
+          <Typography variant="subtitle1" fontWeight={800} sx={{ color: "text.primary", fontSize: 16 }}>
+            Pi Web UI
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Tooltip title={mode === "dark" ? "浅色模式" : "深色模式"}>
+            <IconButton size="small" onClick={onToggleTheme} sx={{ color: "text.secondary" }}>
+              {mode === "dark" ? <span style={{ fontSize: 15 }}>☀️</span> : <span style={{ fontSize: 15 }}>🌙</span>}
             </IconButton>
-          </Box>
+          </Tooltip>
         </Box>
 
         <Divider />
 
-        {/* Session List */}
-        <Box sx={{ flex: 1, overflow: "auto", py: 1 }}>
+        {/* Session list */}
+        <Box sx={{ flex: 1, overflow: "auto", py: 0.5 }}>
           {list.length === 0 ? (
             <Box sx={{ p: 3, textAlign: "center" }}>
-              <Typography variant="body2" color="text.secondary">
-                暂无 Session
-              </Typography>
-              <Typography variant="caption" color="text.disabled">
-                点击「+ 新建」开始
-              </Typography>
+              <Typography variant="body2" color="text.secondary">暂无会话</Typography>
+              <Typography variant="caption" color="text.disabled">点击「新建会话」开始</Typography>
             </Box>
           ) : (
             <List disablePadding dense>
@@ -193,35 +171,34 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenMana
                   selected={s.id === sid}
                   onClick={() => join(s.id)}
                   sx={{
-                    mx: 0.5,
-                    borderRadius: 2,
+                    mx: 0.75,
+                    borderRadius: 1.5,
                     mb: 0.25,
+                    py: 0.5,
                     "&.Mui-selected": {
-                      bgcolor: "primary.main",
-                      color: "primary.contrastText",
-                      "&:hover": { bgcolor: "primary.dark" },
-                      "& .MuiListItemText-secondary": {
-                        color: "rgba(255,255,255,0.7)",
-                      },
+                      bgcolor: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+                      color: "text.primary",
+                      "&:hover": { bgcolor: mode === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)" },
                     },
                   }}
                 >
-                  <ListItemAvatar sx={{ minWidth: 40 }}>
+                  <ListItemAvatar sx={{ minWidth: 34 }}>
                     <Avatar
                       sx={{
-                        width: 32,
-                        height: 32,
-                        bgcolor: s.id === sid ? "rgba(255,255,255,0.2)" : "action.selected",
+                        width: 26,
+                        height: 26,
+                        fontSize: 13,
+                        bgcolor: s.id === sid ? "primary.main" : "action.selected",
                       }}
                     >
-                      <ChatIcon sx={{ fontSize: 16 }} />
+                      <ChatIcon sx={{ fontSize: 14 }} />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText
                     primary={s.name}
                     secondary={
                       <>
-                        {s.workspace || "/"} · {s.messageCount || 0} msg
+                        {s.workspace || "/"} · {s.messageCount || 0}
                         {s.streaming ? " · live" : ""}
                       </>
                     }
@@ -234,33 +211,27 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenMana
                   <Tooltip title="重命名">
                     <IconButton
                       size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRenameId(s.id);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); setRenameId(s.id); }}
                       sx={{
                         opacity: 0,
                         "&:hover": { color: "primary.main" },
                         ".MuiListItemButton-root:hover &": { opacity: 1 },
                       }}
                     >
-                      <EditIcon sx={{ fontSize: 15 }} />
+                      <EditIcon sx={{ fontSize: 14 }} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="删除">
                     <IconButton
                       size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        del(s.id);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); del(s.id); }}
                       sx={{
                         opacity: 0,
                         "&:hover": { color: "error.main" },
                         ".MuiListItemButton-root:hover &": { opacity: 1 },
                       }}
                     >
-                      <DeleteIcon sx={{ fontSize: 16 }} />
+                      <DeleteIcon sx={{ fontSize: 15 }} />
                     </IconButton>
                   </Tooltip>
                 </ListItemButton>
@@ -271,19 +242,23 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenMana
 
         <Divider />
 
-        {/* Footer */}
-        <Box sx={{ display: "flex", gap: 0.5, p: 1.5 }}>
+        {/* Footer: new session + settings */}
+        <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.5 }}>
           <Button
-            variant="contained"
+            variant="text"
             startIcon={<AddIcon />}
             onClick={create}
-            fullWidth
-            sx={{ fontWeight: 600, fontSize: 13 }}
+            sx={{ justifyContent: "flex-start", px: 1.5, fontWeight: 600, fontSize: 13, color: "text.primary" }}
           >
-            新建
+            新建会话
           </Button>
-          <Button variant="outlined" onClick={refresh} sx={{ minWidth: 44, px: 1 }}>
-            <RefreshIcon fontSize="small" />
+          <Button
+            variant="text"
+            startIcon={<SettingsIcon />}
+            onClick={onOpenSettings}
+            sx={{ justifyContent: "flex-start", px: 1.5, fontWeight: 600, fontSize: 13, color: "text.secondary" }}
+          >
+            设置
           </Button>
         </Box>
       </Drawer>

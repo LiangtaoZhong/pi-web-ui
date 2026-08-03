@@ -5,18 +5,12 @@ import {
   CssBaseline,
   Box,
   Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
 } from "@mui/material";
 import socket from "./hooks/useSocket";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import FileBrowser from "./components/FileBrowser";
-import SkillsMcpDialog from "./components/SkillsMcpDialog";
+import SettingsDialog from "./components/SettingsDialog";
 import Toast from "./components/Toast";
 import { useToasts } from "./components/Toast";
 
@@ -27,58 +21,64 @@ function getInitialMode() {
   return localStorage.getItem(LS_THEME) || "dark";
 }
 
+// Claude-style palette
+function buildTheme(mode) {
+  return createTheme({
+    palette: {
+      mode,
+      ...(mode === "dark"
+        ? {
+            background: { default: "#262624", paper: "#2E2E2C" },
+            divider: "rgba(255,255,255,0.09)",
+            primary: { main: "#D97757", light: "#E69A80", dark: "#C15F3C" },
+            text: { primary: "#EDEDEA", secondary: "#A8A8A3" },
+          }
+        : {
+            background: { default: "#FEFEFC", paper: "#FFFFFF" },
+            divider: "rgba(0,0,0,0.08)",
+            primary: { main: "#C15F3C", light: "#D97757", dark: "#A84E2F" },
+            text: { primary: "#1F1F1E", secondary: "#6E6E69" },
+          }),
+    },
+    shape: { borderRadius: 10 },
+    typography: {
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          "::-webkit-scrollbar": { width: 5, height: 5 },
+          "::-webkit-scrollbar-track": { background: "transparent" },
+          "::-webkit-scrollbar-thumb": {
+            background: mode === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+            borderRadius: 3,
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: { root: { backgroundImage: "none" } },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: { root: { textTransform: "none" } },
+      },
+    },
+  });
+}
+
 export default function App() {
   const [mode, setMode] = useState(getInitialMode);
   const [sid, setSid] = useState(null);
   const [conn, setConn] = useState(socket.connected);
   const [fbOpen, setFbOpen] = useState(false);
   const [fbPath, setFbPath] = useState("/");
-  const [manageOpen, setManageOpen] = useState(false);
-  const [renamePrompt, setRenamePrompt] = useState(null); // {id, name}
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [models, setModels] = useState([]);
+  const [model, setModel] = useState("");
   const { toasts, addToast } = useToasts();
 
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode,
-          ...(mode === "dark"
-            ? {
-                background: { default: "#0f1117", paper: "#151821" },
-                divider: "#2a2d3e",
-                primary: { main: "#6c8cff" },
-                text: { primary: "#e1e4ed", secondary: "#8b8fa8" },
-              }
-            : {
-                background: { default: "#f5f6fa", paper: "#ffffff" },
-                divider: "#dde0e8",
-                primary: { main: "#4f6ef7" },
-                text: { primary: "#1a1c2e", secondary: "#6b7094" },
-              }),
-        },
-        shape: { borderRadius: 12 },
-        typography: {
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
-        },
-        components: {
-          MuiCssBaseline: {
-            styleOverrides: {
-              "::-webkit-scrollbar": { width: 5, height: 5 },
-              "::-webkit-scrollbar-track": { background: "transparent" },
-              "::-webkit-scrollbar-thumb": {
-                background: mode === "dark" ? "#2a2d3e" : "#dde0e8",
-                borderRadius: 3,
-              },
-            },
-          },
-          MuiPaper: {
-            styleOverrides: { root: { backgroundImage: "none" } },
-          },
-        },
-      }),
-    [mode]
-  );
+  const theme = useMemo(() => buildTheme(mode), [mode]);
 
   function toggleTheme() {
     const next = mode === "dark" ? "light" : "dark";
@@ -87,7 +87,6 @@ export default function App() {
   }
 
   // Track connection; re-join the active session when the socket reconnects
-  // (e.g. after a server restart) so the Pi process is restarted on demand.
   const sidRef = useRef(sid);
   useEffect(() => { sidRef.current = sid; }, [sid]);
   useEffect(() => {
@@ -161,21 +160,12 @@ export default function App() {
     return () => socket.off("session_deleted", handler);
   }, [sid]);
 
-  async function doRename(value) {
-    if (!renamePrompt || !value.trim()) return;
-    try {
-      const r = await fetch(`/api/sessions/${renamePrompt.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: value.trim() }),
-      });
-      if (r.ok) addToast("已重命名");
-      else addToast("重命名失败", true);
-    } catch (e) {
-      addToast("重命名失败: " + e.message, true);
+  // Model switching (from settings dialog)
+  const onSelectModel = useCallback((m) => {
+    if (sid && m) {
+      socket.emit("set_model", { sessionId: sid, provider: m.provider, modelId: m.id });
     }
-    setRenamePrompt(null);
-  }
+  }, [sid]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -185,13 +175,8 @@ export default function App() {
           <Alert
             severity="error"
             sx={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 9999,
-              borderRadius: 0,
-              justifyContent: "center",
+              position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
+              borderRadius: 0, justifyContent: "center",
             }}
           >
             ⚠ 服务器连接断开，正在重连...
@@ -203,7 +188,7 @@ export default function App() {
           onSelect={setSid}
           mode={mode}
           onToggleTheme={toggleTheme}
-          onOpenManage={() => setManageOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -211,7 +196,13 @@ export default function App() {
             <ChatArea
               sid={sid}
               addToast={addToast}
-              onRename={(currentName) => setRenamePrompt({ id: sid, name: currentName })}
+              mode={mode}
+              onToggleTheme={toggleTheme}
+              onOpenSettings={() => setSettingsOpen(true)}
+              models={models}
+              model={model}
+              onModelsLoaded={(m, cur) => { if (m) setModels(m); if (cur) setModel(cur); }}
+              onSelectModel={onSelectModel}
             />
           ) : (
             <Box
@@ -225,8 +216,8 @@ export default function App() {
                 color: "text.secondary",
               }}
             >
-              <Box sx={{ fontSize: 52, opacity: 0.5 }}>💬</Box>
-              <Box sx={{ typography: "h6", fontWeight: 700, color: "text.primary" }}>
+              <Box sx={{ fontSize: 46, opacity: 0.5 }}>💬</Box>
+              <Box sx={{ typography: "h6", fontWeight: 600, color: "text.primary" }}>
                 选择或创建一个 Session
               </Box>
               <Box sx={{ typography: "body2", textAlign: "center", maxWidth: 340, lineHeight: 1.6 }}>
@@ -244,60 +235,20 @@ export default function App() {
           />
         )}
 
-        <SkillsMcpDialog
-          open={manageOpen}
-          onClose={() => setManageOpen(false)}
+        <SettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
           addToast={addToast}
+          mode={mode}
+          onToggleTheme={toggleTheme}
+          sid={sid}
+          models={models}
+          model={model}
+          onSelectModel={onSelectModel}
         />
-
-        {renamePrompt && (
-          <RenameDialog
-            initial={renamePrompt.name}
-            onClose={() => setRenamePrompt(null)}
-            onConfirm={doRename}
-          />
-        )}
 
         <Toast toasts={toasts} />
       </Box>
     </ThemeProvider>
-  );
-}
-
-function RenameDialog({ initial, onClose, onConfirm }) {
-  const [value, setValue] = useState(initial || "");
-  useEffect(() => {
-    setValue(initial || "");
-  }, [initial]);
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>重命名会话</DialogTitle>
-      <DialogContent>
-        <TextField
-          autoFocus
-          fullWidth
-          size="small"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); onConfirm(value); }
-          }}
-          placeholder="输入新名称"
-          sx={{ mt: 1 }}
-        />
-      </DialogContent>
-      <DialogActions sx={{ px: 2, pb: 2 }}>
-        <Button onClick={onClose} size="small" variant="outlined">取消</Button>
-        <Button
-          onClick={() => onConfirm(value)}
-          size="small"
-          variant="contained"
-          disabled={!value.trim()}
-        >
-          确定
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }

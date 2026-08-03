@@ -11,6 +11,7 @@ import {
   List,
   ListItem,
   ListItemText,
+  ListItemIcon,
   IconButton,
   Button,
   TextField,
@@ -18,6 +19,7 @@ import {
   Divider,
   Chip,
   CircularProgress,
+  Switch,
 } from "@mui/material";
 import {
   Close as CloseIcon,
@@ -26,6 +28,9 @@ import {
   RestartAlt as RestartIcon,
   Extension as SkillIcon,
   Dns as McpIcon,
+  DarkMode as DarkIcon,
+  LightMode as LightIcon,
+  SmartToy as ModelIcon,
 } from "@mui/icons-material";
 
 function TabPanel({ children, value, index }) {
@@ -43,7 +48,7 @@ async function api(url, options) {
   return data;
 }
 
-export default function SkillsMcpDialog({ open, onClose, addToast }) {
+export default function SettingsDialog({ open, onClose, addToast, mode, onToggleTheme, models, model, onSelectModel }) {
   const [tab, setTab] = useState(0);
   const [skills, setSkills] = useState([]);
   const [mcps, setMcps] = useState([]);
@@ -74,8 +79,8 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
   }, [addToast]);
 
   useEffect(() => {
-    if (open) load();
-  }, [open, load]);
+    if (open && (tab === 2 || tab === 3)) load();
+  }, [open, tab, load]);
 
   async function installSkill() {
     if (!sName.trim() || !sDesc.trim()) {
@@ -87,11 +92,7 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
       await api("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: sName.trim(),
-          description: sDesc.trim(),
-          content: sContent,
-        }),
+        body: JSON.stringify({ name: sName.trim(), description: sDesc.trim(), content: sContent }),
       });
       addToast("✅ Skill 已安装，重启会话后生效");
       setSName(""); setSDesc(""); setSContent("");
@@ -124,10 +125,7 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
     }
     setBusy(true);
     try {
-      const args = mArgs
-        .split(/\s+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const args = mArgs.split(/\s+/).map((s) => s.trim()).filter(Boolean);
       await api("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,36 +170,107 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 0 }}>
-        <Typography variant="subtitle1" fontWeight={700}>
-          Skills & MCP 管理
-        </Typography>
+        <Typography variant="subtitle1" fontWeight={700}>设置</Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2 }}>
+        <Tab label="外观" />
+        <Tab label="模型" />
         <Tab icon={<SkillIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Skills" />
-        <Tab icon={<McpIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="MCP Servers" />
+        <Tab icon={<McpIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="MCP" />
       </Tabs>
-
       <Divider />
 
       <DialogContent sx={{ minHeight: 320 }}>
-        <Alert severity="info" sx={{ mb: 1, fontSize: 12 }}>
-          修改后需要重启会话进程才会生效（安装/删除后点击右下角「重启生效」）。
-        </Alert>
+        {/* 外观 */}
+        <TabPanel value={tab} index={0}>
+          <List dense disablePadding>
+            <ListItem>
+              <ListItemIcon>
+                {mode === "dark" ? <DarkIcon /> : <LightIcon />}
+              </ListItemIcon>
+              <ListItemText
+                primary="主题"
+                secondary={mode === "dark" ? "深色模式" : "浅色模式"}
+                slotProps={{
+                  primary: { fontSize: 13, fontWeight: 600 },
+                  secondary: { fontSize: 12 },
+                }}
+              />
+              <Switch checked={mode === "dark"} onChange={onToggleTheme} />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><RestartIcon /></ListItemIcon>
+              <ListItemText
+                primary="重启会话进程"
+                secondary="安装 Skill / MCP 或修改配置后生效"
+                slotProps={{
+                  primary: { fontSize: 13, fontWeight: 600 },
+                  secondary: { fontSize: 12 },
+                }}
+              />
+              <Button size="small" variant="outlined" color="warning" onClick={restart} disabled={busy}>
+                重启
+              </Button>
+            </ListItem>
+          </List>
+          <Alert severity="info" sx={{ mt: 1, fontSize: 12 }}>
+            当前版本：v2.1.0 · 数据保存在 ~/.pi/agent/ 下
+          </Alert>
+        </TabPanel>
 
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-            <CircularProgress size={24} />
-          </Box>
-        ) : (
-          <>
-            {/* Skills tab */}
-            <TabPanel value={tab} index={0}>
+        {/* 模型 */}
+        <TabPanel value={tab} index={1}>
+          <Typography variant="caption" color="text.secondary">
+            当前会话模型：{model || "-"}
+          </Typography>
+          <List dense disablePadding sx={{ mt: 1 }}>
+            {(models || []).map((m) => (
+              <ListItem
+                key={m.provider + "/" + m.id}
+                secondaryAction={
+                  <Button
+                    size="small"
+                    variant={model === (m.name || m.id) ? "contained" : "outlined"}
+                    disabled={model === (m.name || m.id)}
+                    onClick={() => { onSelectModel(m); addToast("已切换模型: " + (m.name || m.id)); }}
+                  >
+                    {model === (m.name || m.id) ? "使用中" : "切换"}
+                  </Button>
+                }
+              >
+                <ListItemIcon><ModelIcon fontSize="small" /></ListItemIcon>
+                <ListItemText
+                  primary={m.name || m.id}
+                  secondary={m.provider}
+                  slotProps={{
+                    primary: { fontSize: 13, fontWeight: 600 },
+                    secondary: { fontSize: 11 },
+                  }}
+                />
+              </ListItem>
+            ))}
+            {!models?.length && (
+              <Typography variant="body2" color="text.disabled" sx={{ py: 2, textAlign: "center" }}>
+                暂无可用模型
+              </Typography>
+            )}
+          </List>
+        </TabPanel>
+
+        {/* Skills */}
+        <TabPanel value={tab} index={2}>
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <>
               <Typography variant="caption" color="text.secondary">
-                已安装 ({skills.length}) — 安装目录: ~/.pi/agent/skills/
+                已安装 ({skills.length}) — ~/.pi/agent/skills/
               </Typography>
               <List dense disablePadding>
                 {skills.map((s) => (
@@ -229,49 +298,34 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
                   </Typography>
                 )}
               </List>
-
               <Divider sx={{ my: 1.5 }} />
-
               <Typography variant="subtitle2" sx={{ mb: 1 }}>安装新 Skill</Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <TextField size="small" label="名称 (小写字母/数字/连字符)" value={sName} onChange={(e) => setSName(e.target.value)} />
+                <TextField size="small" label="描述" value={sDesc} onChange={(e) => setSDesc(e.target.value)} />
                 <TextField
-                  size="small"
-                  label="名称 (小写字母/数字/连字符)"
-                  value={sName}
-                  onChange={(e) => setSName(e.target.value)}
+                  size="small" label="SKILL.md 内容 (可选，留空自动生成)"
+                  multiline minRows={2} maxRows={5}
+                  value={sContent} onChange={(e) => setSContent(e.target.value)}
                 />
-                <TextField
-                  size="small"
-                  label="描述"
-                  value={sDesc}
-                  onChange={(e) => setSDesc(e.target.value)}
-                />
-                <TextField
-                  size="small"
-                  label="SKILL.md 内容 (可选，留空自动生成)"
-                  multiline
-                  minRows={2}
-                  maxRows={5}
-                  value={sContent}
-                  onChange={(e) => setSContent(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={installSkill}
-                  disabled={busy}
-                  size="small"
-                  sx={{ alignSelf: "flex-start" }}
-                >
+                <Button variant="contained" startIcon={<AddIcon />} onClick={installSkill} disabled={busy} size="small" sx={{ alignSelf: "flex-start" }}>
                   安装
                 </Button>
               </Box>
-            </TabPanel>
+            </>
+          )}
+        </TabPanel>
 
-            {/* MCP tab */}
-            <TabPanel value={tab} index={1}>
+        {/* MCP */}
+        <TabPanel value={tab} index={3}>
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <>
               <Typography variant="caption" color="text.secondary">
-                已配置 ({mcps.length}) — 配置文件: ~/.pi/agent/mcp.json
+                已配置 ({mcps.length}) — ~/.pi/agent/mcp.json
               </Typography>
               <List dense disablePadding>
                 {mcps.map((m) => (
@@ -287,12 +341,7 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
                       primary={m.name}
                       secondary={
                         <Box component="span" sx={{ fontSize: 11 }}>
-                          <Chip
-                            label={m.command}
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontSize: 10, height: 20, mr: 0.5 }}
-                          />
+                          <Chip label={m.command} size="small" variant="outlined" sx={{ fontSize: 10, height: 20, mr: 0.5 }} />
                           {m.args?.join(" ") || ""}
                         </Box>
                       }
@@ -306,59 +355,23 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
                   </Typography>
                 )}
               </List>
-
               <Divider sx={{ my: 1.5 }} />
-
               <Typography variant="subtitle2" sx={{ mb: 1 }}>添加 MCP 服务器</Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                <TextField
-                  size="small"
-                  label="名称 (如 mui-mcp)"
-                  value={mName}
-                  onChange={(e) => setMName(e.target.value)}
-                />
-                <TextField
-                  size="small"
-                  label="启动命令 (如 npx)"
-                  value={mCommand}
-                  onChange={(e) => setMCommand(e.target.value)}
-                />
-                <TextField
-                  size="small"
-                  label="参数 (空格分隔，如 -y @mui/mcp@latest)"
-                  value={mArgs}
-                  onChange={(e) => setMArgs(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={addMcp}
-                  disabled={busy}
-                  size="small"
-                  sx={{ alignSelf: "flex-start" }}
-                >
+                <TextField size="small" label="名称 (如 mui-mcp)" value={mName} onChange={(e) => setMName(e.target.value)} />
+                <TextField size="small" label="启动命令 (如 npx)" value={mCommand} onChange={(e) => setMCommand(e.target.value)} />
+                <TextField size="small" label="参数 (空格分隔，如 -y @mui/mcp@latest)" value={mArgs} onChange={(e) => setMArgs(e.target.value)} />
+                <Button variant="contained" startIcon={<AddIcon />} onClick={addMcp} disabled={busy} size="small" sx={{ alignSelf: "flex-start" }}>
                   添加
                 </Button>
               </Box>
-            </TabPanel>
-          </>
-        )}
+            </>
+          )}
+        </TabPanel>
       </DialogContent>
 
       <DialogActions sx={{ px: 2, pb: 2 }}>
-        <Button
-          variant="outlined"
-          color="warning"
-          startIcon={<RestartIcon />}
-          onClick={restart}
-          disabled={busy}
-          size="small"
-        >
-          重启生效
-        </Button>
-        <Button variant="contained" onClick={onClose} size="small" sx={{ ml: "auto" }}>
-          关闭
-        </Button>
+        <Button variant="contained" onClick={onClose} size="small">关闭</Button>
       </DialogActions>
     </Dialog>
   );
