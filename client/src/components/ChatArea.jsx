@@ -30,6 +30,7 @@ import {
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
+import RightNav from "./RightNav";
 
 function contentSig(content) {
   try { return JSON.stringify(content); } catch { return String(content); }
@@ -459,6 +460,21 @@ export default function ChatArea({
   if (live && streamBlocks.length > 0) {
     allMessages.push({ role: "assistant", content: streamBlocks, ts: Date.now(), streaming: true });
   }
+
+  // 用户提问列表（供右侧导航）: 提取用户消息在 allMessages 中的位置
+  const userQuestions = [];
+  allMessages.forEach((m, idx) => {
+    if (m.role !== "user") return;
+    const raw = typeof m.content === "string" ? m.content : "";
+    const text = raw.replace(/\s+/g, " ").trim();
+    if (text && text !== "(image)") userQuestions.push({ text: text.slice(0, 60), idx });
+  });
+
+  // 滚动定位到某条消息
+  const scrollToMsg = useCallback((idx) => {
+    const el = document.getElementById(`chat-msg-${idx}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
   return (
     <>
       {/* Header */}
@@ -518,28 +534,43 @@ export default function ChatArea({
       <Box
         sx={{
           flex: 1,
-          overflow: "auto",
-          px: { xs: 1.5, sm: 3 },
-          py: 3,
+          minHeight: 0,
+          position: "relative",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
         }}
       >
-        <Box sx={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 2 }}>
-          {allMessages.length === 0 ? (
-            <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 10 }}>
-              <Typography variant="body2" color="text.disabled">
-                发送消息开始对话
-              </Typography>
-            </Box>
-          ) : (
-            allMessages.map((m, i) => (
-              <MessageBubble key={m.streaming ? "live" : `msg-${i}`} msg={m} />
-            ))
-          )}
-          <div ref={bottomRef} />
+        <Box
+          sx={{
+            flex: 1,
+            overflow: "auto",
+            px: { xs: 1.5, sm: 3 },
+            py: 3,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <Box sx={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 2 }}>
+            {allMessages.length === 0 ? (
+              <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 10 }}>
+                <Typography variant="body2" color="text.disabled">
+                  发送消息开始对话
+                </Typography>
+              </Box>
+            ) : (
+              allMessages.map((m, i) => (
+                <div key={m.streaming ? "live" : `msg-${i}`} id={`chat-msg-${i}`}>
+                  <MessageBubble msg={m} />
+                </div>
+              ))
+            )}
+            <div ref={bottomRef} />
+          </Box>
         </Box>
+
+        {/* 右侧提问导航 */}
+        <RightNav questions={userQuestions} onJump={scrollToMsg} />
       </Box>
 
       {/* Input */}
