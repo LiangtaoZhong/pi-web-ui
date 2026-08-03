@@ -1,30 +1,44 @@
 import { useState, useEffect } from "react";
 import { escape } from "../utils/markdown";
+import { getSocket, saveActiveSid } from "../hooks/useSocket";
 
-export default function Sidebar({ emit, on, addToast, activeSid, setActiveSid }) {
+const socket = getSocket();
+
+export default function Sidebar({ activeSid, setActiveSid, addToast }) {
   const [sessions, setSessions] = useState([]);
 
   const refresh = async () => {
     try {
       const r = await fetch("/api/sessions");
       setSessions(await r.json());
-    } catch {}
+    } catch (e) {
+      console.error("Failed to fetch sessions:", e);
+    }
   };
 
-  useEffect(() => { refresh(); const i = setInterval(refresh, 8000); return () => clearInterval(i); }, []);
-
-  // Listen for new sessions created via socket
   useEffect(() => {
-    const u1 = on("session_created", (d) => {
+    refresh();
+    const interval = setInterval(refresh, 8000);
+
+    const onCreated = (d) => {
       setActiveSid(d.id);
+      saveActiveSid(d.id);
       refresh();
-    });
-    const u2 = on("session_deleted", () => refresh());
-    return () => { u1(); u2(); };
-  }, [on, setActiveSid]);
+    };
+    const onDeleted = () => refresh();
+
+    socket.on("session_created", onCreated);
+    socket.on("session_deleted", onDeleted);
+
+    return () => {
+      clearInterval(interval);
+      socket.off("session_created", onCreated);
+      socket.off("session_deleted", onDeleted);
+    };
+  }, [setActiveSid]);
 
   const create = () => {
-    emit("session_create", {
+    socket.emit("session_create", {
       name: "Session " + new Date().toLocaleTimeString("zh-CN"),
       workspace: "",
     });
@@ -32,15 +46,20 @@ export default function Sidebar({ emit, on, addToast, activeSid, setActiveSid })
 
   const del = async (id) => {
     if (!confirm("确定删除此 Session？")) return;
-    await fetch(`/api/sessions/${id}`, { method: "DELETE" });
-    if (activeSid === id) setActiveSid(null);
-    refresh();
+    try {
+      await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+      if (activeSid === id) setActiveSid(null);
+      refresh();
+    } catch (e) {
+      addToast("删除失败: " + e.message, true);
+    }
   };
 
   const join = (id) => {
     if (id === activeSid) return;
     setActiveSid(id);
-    emit("session_join", { sessionId: id });
+    saveActiveSid(id);
+    socket.emit("session_join", { sessionId: id });
   };
 
   return (
@@ -52,7 +71,12 @@ export default function Sidebar({ emit, on, addToast, activeSid, setActiveSid })
           </svg>
           Pi Web UI
         </span>
-        <button className="theme-btn" onClick={() => emit("toggleTheme")} title="切换主题"></button>
+        <button className="theme-btn" onClick={() => {
+          const h = document.documentElement;
+          const n = h.getAttribute("data-theme") === "light" ? "dark" : "light";
+          h.setAttribute("data-theme", n);
+          localStorage.setItem("pi-web-ui-theme", n);
+        }} title="切换主题"></button>
       </div>
 
       <div className="sess-list">
