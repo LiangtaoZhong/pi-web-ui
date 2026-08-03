@@ -92,6 +92,7 @@ export default function App() {
   const [models, setModels] = useState([]);
   const [model, setModel] = useState("");
   const [viewingFile, setViewingFile] = useState(null);
+  const [pendingRef, setPendingRef] = useState(null); // {path, isDir} 待追加到输入框的 @引用
   const { toasts, addToast } = useToasts();
 
   const theme = useMemo(() => buildTheme(mode), [mode]);
@@ -216,6 +217,7 @@ export default function App() {
           onToggleTheme={toggleTheme}
           onOpenSettings={handleOpenSettings}
           onOpenFile={setViewingFile}
+          onAddReference={(path, isDir) => setPendingRef({ path, isDir, ts: Date.now() })}
         />
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -232,6 +234,8 @@ export default function App() {
               onRename={handleRename}
               viewingFile={viewingFile}
               onCloseViewer={() => setViewingFile(null)}
+              pendingRef={pendingRef}
+              onRefConsumed={() => setPendingRef(null)}
             />
           ) : (
             <Box

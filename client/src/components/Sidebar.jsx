@@ -68,7 +68,7 @@ function RenameDialog({ open, initial, onClose, onConfirm }) {
   );
 }
 
-export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings, onOpenFile }) {
+export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings, onOpenFile, onAddReference }) {
   const [list, setList] = useState([]);
   const [renameId, setRenameId] = useState(null);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(LS_SIDEBAR) === "1");
@@ -316,7 +316,7 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
 
         {/* 内容区：会话列表 / 文件浏览器 */}
         {tab === "files" && !collapsed ? (
-          <FileBrowserSidebar workspace={workspace} sid={sid} onOpenFile={onOpenFile} />
+          <FileBrowserSidebar workspace={workspace} sid={sid} onOpenFile={onOpenFile} onAddReference={onAddReference} />
         ) : (
         <Box sx={{ flex: 1, overflow: "auto", py: 0.5, ...(collapsed && { display: "none" }) }}>
           {list.length === 0 ? (

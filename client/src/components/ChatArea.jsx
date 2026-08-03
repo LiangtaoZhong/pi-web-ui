@@ -56,7 +56,7 @@ function shortPath(p) {
 export default function ChatArea({
   sid, addToast, onRename,
   onOpenSettings, models, model, onModelsLoaded, onSelectModel,
-  viewingFile, onCloseViewer,
+  viewingFile, onCloseViewer, pendingRef, onRefConsumed,
 }) {
   const [msgs, setMsgs] = useState([]);
   const [name, setName] = useState("");
@@ -232,10 +232,6 @@ export default function ChatArea({
       }
     }
 
-    function onContextAdded(d) {
-      addToast("🤖 已加入上下文：" + (d.path || ""));
-    }
-
     function onResponse(resp) {
       if (resp?.command === "get_state") {
         const st = resp.data;
@@ -276,7 +272,6 @@ export default function ChatArea({
     socket.on("pi_error", onErr);
     socket.on("pi_disconnected", onDC);
     socket.on("workspace_updated", onWsUpd);
-    socket.on("context_added", onContextAdded);
 
     // Fetch model info + commands, and poll context usage every 5s.
     // The freshly-spawned pi process needs a moment to become ready, so
@@ -324,7 +319,6 @@ export default function ChatArea({
       socket.off("pi_error", onErr);
       socket.off("pi_disconnected", onDC);
       socket.off("workspace_updated", onWsUpd);
-      socket.off("context_added", onContextAdded);
     };
   }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults, onModelsLoaded]);
 
@@ -367,6 +361,17 @@ export default function ChatArea({
       return next;
     });
   }
+
+  // ── 消费右侧“让 AI 读取”的 @引用：追加到输入框 ───────────────────────
+  useEffect(() => {
+    if (!pendingRef?.path) return;
+    setInput((prev) => {
+      const ref = "@" + pendingRef.path + (pendingRef.isDir ? "/" : "");
+      return prev.trim() ? prev.replace(/\s*$/, "") + " " + ref + " " : ref + " ";
+    });
+    setTimeout(() => inputRef.current?.focus(), 50);
+    onRefConsumed && onRefConsumed();
+  }, [pendingRef, onRefConsumed]);
 
   // ── Actions ───────────────────────────────────────────────────────────
   function appendToInput(text) {

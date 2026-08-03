@@ -46,7 +46,7 @@ function fmtBytes(n) {
   return n + " B";
 }
 
-export default function FileBrowserSidebar({ workspace, sid, onOpenFile }) {
+export default function FileBrowserSidebar({ workspace, sid, onOpenFile, onAddReference }) {
   const [path, setPath] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +91,8 @@ export default function FileBrowserSidebar({ workspace, sid, onOpenFile }) {
   function readAsContext(item) {
     closeMenu();
     socket.emit("read_context", { sessionId: sid, path: item.path, isDir: item.type === "directory" });
+    // 直观反馈：把 @引用 追加到输入框
+    if (onAddReference) onAddReference(item.path, item.type === "directory");
   }
 
   function copyPath(item) {
