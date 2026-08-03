@@ -217,6 +217,10 @@ function startSession(sessionId) {
 
   proc.on("close", (code) => {
     console.log(`[${sessionId}] Pi exited code=${code}`);
+    // An expected restart (workspace switch / manual restart) kills the old
+    // process on purpose; don't surface it to the UI as an error.
+    const expected = meta.expectedRestart;
+    meta.expectedRestart = false;
     // Guard: only clear state if this proc is still the current one,
     // otherwise a stale close event would clobber a newer process.
     if (meta.rpcProc === proc) {
@@ -224,7 +228,7 @@ function startSession(sessionId) {
       meta.rpcReady = false;
     }
     meta.streaming = false;
-    io.to(sessionId).emit("pi_disconnected", { code });
+    if (!expected) io.to(sessionId).emit("pi_disconnected", { code });
   });
 
   proc.on("error", (err) => {
@@ -233,10 +237,14 @@ function startSession(sessionId) {
   });
 }
 
-function killSession(sessionId) {
+// Kill a session's pi process. Pass expected=true when the termination is
+// intentional (workspace switch / restart) so the client isn't shown an
+// error for it.
+function killSession(sessionId, expected) {
   const meta = sessions.get(sessionId);
   if (!meta) return;
   if (meta.rpcProc) {
+    meta.expectedRestart = !!expected;
     meta.rpcProc.kill("SIGTERM");
     meta.rpcProc = null;
   }
@@ -384,7 +392,7 @@ app.delete("/api/sessions/:id", (req, res) => {
   const { id } = req.params;
   const meta = sessions.get(id);
   if (!meta) return res.status(404).json({ error: "Not found" });
-  killSession(id);
+  killSession(id, true);
   try { fs.unlinkSync(sessionFilePath(meta.workspace, id)); } catch (e) { /* */ }
   sessions.delete(id);
   saveMeta();
@@ -580,7 +588,7 @@ app.delete("/api/mcp/:name", (req, res) => {
 app.post("/api/restart", (_req, res) => {
   let count = 0;
   for (const [, meta] of sessions) {
-    if (meta.rpcProc) { killSession(meta.id); count++; }
+    if (meta.rpcProc) { killSession(meta.id, true); count++; }
   }
   res.json({ success: true, restarted: count });
 });
@@ -635,7 +643,8 @@ io.on("connection", (socket) => {
   socket.on("session_update_workspace", ({ sessionId, workspace }) => {
     const meta = sessions.get(sessionId);
     if (!meta) return;
-    killSession(sessionId);
+    // Kill old process; expected restart — don't show an error to the client
+    killSession(sessionId, true);
     meta.workspace = workspace;
     saveMeta();
     startSession(sessionId);

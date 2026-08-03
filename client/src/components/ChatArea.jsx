@@ -244,6 +244,8 @@ export default function ChatArea({ sid, addToast, onRename }) {
     function onWsUpd({ workspace: ws }) { setWorkspace(ws); }
     function onErr(d) { addToast(d.error, true); setLive(false); }
     function onDC(d) {
+      // An expected restart (workspace switch) doesn't mean something broke
+      if (d.expected) return;
       if (d.code) addToast("⚠️ Pi 进程断开 (code=" + d.code + ")", true);
       setLive(false);
     }
