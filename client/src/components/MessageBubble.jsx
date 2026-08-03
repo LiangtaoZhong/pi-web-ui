@@ -21,29 +21,32 @@ function ThinkingBlock({ blk, active }) {
       <Box
         component="button"
         onClick={() => setOpen(!open)}
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0.75,
-          width: "100%",
-          px: 1,
-          py: 0.3,
-          borderRadius: 1,
-          cursor: "pointer",
-          bgcolor: "action.hover",
-          border: 1,
-          borderColor: "divider",
-          fontFamily: "inherit",
-          fontSize: "0.7rem",
-          color: "text.disabled",
-          textAlign: "left",
-          ...(active && {
-            animation: "thinkPulse 1.8s ease-in-out infinite",
-            "@keyframes thinkPulse": {
-              "0%,100%": { opacity: 1 },
-              "50%": { opacity: 0.5 },
-            },
-          }),
+        sx={(theme) => {
+          const dark = theme.palette.mode === "dark";
+          return {
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            width: "100%",
+            px: 1,
+            py: 0.25,
+            borderRadius: "6px",
+            cursor: "pointer",
+            bgcolor: dark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)",
+            border: "0.5px solid",
+            borderColor: dark ? "rgba(247,247,242,0.08)" : "rgba(30,30,29,0.08)",
+            fontFamily: "inherit",
+            fontSize: "0.65rem",
+            color: "text.disabled",
+            textAlign: "left",
+            ...(active && {
+              animation: "thinkPulse 1.8s ease-in-out infinite",
+              "@keyframes thinkPulse": {
+                "0%,100%": { opacity: 1 },
+                "50%": { opacity: 0.5 },
+              },
+            }),
+          };
         }}
       >
         {active ? (
@@ -66,17 +69,19 @@ function ThinkingBlock({ blk, active }) {
       </Box>
       {open && (
         <Box
-          sx={{
+          sx={(theme) => ({
             mt: 0.5,
             px: 1.5,
             py: 0.75,
-            bgcolor: "action.hover",
-            border: 1,
-            borderColor: "divider",
-            borderRadius: 1,
+            bgcolor:
+              theme.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)",
+            border: "0.5px solid",
+            borderColor:
+              theme.palette.mode === "dark" ? "rgba(247,247,242,0.08)" : "rgba(30,30,29,0.08)",
+            borderRadius: "6px",
             maxHeight: 260,
             overflow: "auto",
-          }}
+          })}
         >
           <Typography
             variant="caption"
@@ -112,7 +117,7 @@ function ToolCallBlock({ blk }) {
         ? JSON.stringify(blk.result, null, 2)
         : "";
 
-  const statusColor = isErr ? "error.main" : isRunning ? "primary.main" : "success.main";
+  const statusColor = isErr ? "error.main" : "primary.main";
   const statusText = isErr ? "失败" : isRunning ? "运行中" : "完成";
 
   return (
@@ -128,15 +133,15 @@ function ToolCallBlock({ blk }) {
             gap: 0.75,
             width: "100%",
             px: 1,
-            py: 0.3,
-            borderRadius: 1,
+            py: 0.25,
+            borderRadius: "6px",
             cursor: "pointer",
-            border: 1,
+            border: "0.5px solid",
             fontFamily: "inherit",
-            fontSize: "0.7rem",
+            fontSize: "0.68rem",
             textAlign: "left",
             color: "text.primary",
-            bgcolor: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+            bgcolor: dark ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.012)",
             borderColor: isErr
               ? (dark ? "rgba(255,92,108,0.4)" : "rgba(230,69,85,0.4)")
               : isRunning
@@ -161,7 +166,7 @@ function ToolCallBlock({ blk }) {
         ) : isErr ? (
           <ErrorIcon sx={{ fontSize: 13, color: "error.main", flexShrink: 0 }} />
         ) : (
-          <DoneIcon sx={{ fontSize: 13, color: "success.main", flexShrink: 0 }} />
+          <DoneIcon sx={{ fontSize: 13, color: "primary.main", flexShrink: 0 }} />
         )}
         <Typography
           variant="caption"
@@ -228,7 +233,8 @@ function ToolCallBlock({ blk }) {
                 py: 0.75,
                 maxHeight: 240,
                 overflow: "auto",
-                bgcolor: theme.palette.mode === "dark" ? "hsl(30 3.3% 11.8%)" : "grey.100",
+                bgcolor:
+                  theme.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)",
               })}
             >
               <Typography
