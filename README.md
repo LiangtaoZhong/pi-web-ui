@@ -12,8 +12,8 @@
 - 🗂️ **可折叠侧边栏**：一键收起为窄图标条，会话列表 / 主题 / 新建 / 设置均可展开恢复
 - 📁 **侧边栏文件浏览器**：以工作区为根浏览文件/文件夹，支持进入子目录、返回上级、刷新；折叠时也可切换
 - 📄 **代码查看器**：点击文件在主界面展示代码（行号 + highlight.js 语法高亮 + 语言识别），下方输入框始终保持在最前
-- ✂️ **框选代码**：在代码查看器中框选任意代码，浮动工具条一键“添加到输入框”
-- 🤖 **让 AI 读取**：右键文件/文件夹，后台通过 RPC bash 将内容注入上下文（下次发送时 AI 自动可读），并 toast 提示
+- ✂️ **框选代码**：在代码查看器中框选任意代码（选区高亮保持），浮动工具条显示在鼠标释放位置，一键“添加到输入框”（markdown 代码块）
+- 🤖 **让 AI 读取**：右键文件/文件夹，后台通过 RPC bash 将内容注入上下文（下次发送时 AI 自动可读），输入框同步追加 `@路径` 引用直观反馈
 - ⌨️ **输入框向上拉伸**：拖拽输入框顶部手柄向上拉升高度（双击还原），底部无多余下划线
 - 🧭 **右侧提问导航**：圆角悬浮卡片，鼠标悬停展开历史提问列表，点击跳转对应消息
 - 📚 **会话管理**：创建、重命名、删除、切换会话
@@ -76,12 +76,14 @@ npm test                    # 端到端测试（需服务器运行 + 模型可�
 server.js                  Express + Socket.IO 后端
 ├── Pi RPC 子进程管理        spawn pi --mode rpc，JSONL 事件转发
 ├── 会话持久化              ~/.pi/agent/sessions/pi-web-ui/_meta.json
-├── REST API               /api/sessions, /api/browse, /api/skills, /api/mcp, /api/restart
-└── WebSocket              会话 / 对话 / 模型 / 统计命令
+├── REST API               /api/sessions, /api/browse(文件+目录), /api/file(读文件),
+│                          /api/skills, /api/mcp, /api/restart
+└── WebSocket              会话 / 对话 / 模型 / 统计 / read_context(注入上下文)
 
 client/                    React 19 + Vite + MUI 9 前端
-├── src/components/        Sidebar / ChatArea / MessageBubble / Markdown /
-│                          FileBrowser / SettingsDialog / Toast
+├── src/components/        Sidebar(会话/文件 tab) / ChatArea / MessageBubble /
+│                          Markdown / FileViewer(代码查看器) / FileBrowserSidebar /
+│                          RightNav / FileBrowser / SettingsDialog / Toast
 ├── src/theme/tokens.js    Claude 设计 token（亮/暗色板、字体栈）
 ├── src/assets/fonts/      Anthropic Sans / Serif / Mono（自托管 woff2）
 └── 构建产物 → public/      由 server.js 托管（不提交 git）
@@ -99,6 +101,7 @@ client/                    React 19 + Vite + MUI 9 前端
 
 ## 📜 版本历史
 
+- `v2.3.1` — 修复框选代码：选区高亮在鼠标释放后保持（代码面板 memo 隔离）；工具条 portal 渲染并定位在鼠标释放处；点击按钮可靠插入 markdown 代码块；@引用反馈替代 toast
 - `v2.3.0` — 侧边栏文件浏览器（工作区根目录、进入/返回、右键菜单）；主界面代码查看器（行号 + highlight.js 高亮、亮/暗跟随 Claude 主题）；框选代码以 markdown 代码块一键添加到输入框；右键“让 AI 读取”通过 RPC bash 注入上下文，并在输入框追加 `@路径` 引用直观反馈
 - `v2.2.1` — 侧边栏可折叠收起为窄条；输入框顶部手柄向上拉伸（双击还原）；右侧提问导航恢复为圆角悬浮卡片（悬停展开）；移除消息内联序号标签
 - `v2.2.0` — 迁移 claude.ai 设计系统：Anthropic Sans/Serif/Mono 字体、Claude 暖色板（亮/暗）、768px 阅读列、用户软气泡 + 助手衬线无气泡、分隔线风格表格、灰色代码块外壳、圆角输入框
