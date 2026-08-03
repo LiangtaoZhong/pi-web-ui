@@ -694,6 +694,14 @@ io.on("connection", (socket) => {
     if (!sendRPC(sessionId, { type: "get_available_models" })) socket.emit("pi_error", { error: "Cannot list models" });
   });
 
+  socket.on("get_session_stats", ({ sessionId }) => {
+    if (!sendRPC(sessionId, { type: "get_session_stats" })) socket.emit("pi_error", { error: "Cannot get stats" });
+  });
+
+  socket.on("get_commands", ({ sessionId }) => {
+    if (!sendRPC(sessionId, { type: "get_commands" })) socket.emit("pi_error", { error: "Cannot list commands" });
+  });
+
   socket.on("disconnect", () => {
     for (const [, meta] of sessions) meta.socketRooms.delete(socket.id);
   });

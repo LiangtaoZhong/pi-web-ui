@@ -10,6 +10,11 @@ import {
   Menu,
   MenuItem,
   ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  Paper,
+  List,
+  LinearProgress,
   Tooltip,
 } from "@mui/material";
 import {
@@ -19,12 +24,21 @@ import {
   Edit as EditIcon,
   ArrowDropDown as ArrowDropDownIcon,
   SmartToy as ModelIcon,
+  Memory as MemoryIcon,
+  Terminal as CommandIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
 
 function contentSig(content) {
   try { return JSON.stringify(content); } catch { return String(content); }
+}
+
+function fmtTokens(n) {
+  if (n == null || isNaN(n)) return "-";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e3) return Math.round(n / 1e3) + "k";
+  return String(n);
 }
 
 export default function ChatArea({ sid, addToast, onRename }) {
@@ -38,6 +52,12 @@ export default function ChatArea({ sid, addToast, onRename }) {
   const [model, setModel] = useState("");
   const [models, setModels] = useState([]);
   const [modelAnchor, setModelAnchor] = useState(null);
+  // 上下文窗口统计
+  const [ctx, setCtx] = useState(null); // {tokens, contextWindow, percent}
+  // 命令补全
+  const [commands, setCommands] = useState([]);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const inputRef = useRef(null);
 
   const bottomRef = useRef(null);
   const seenSigsRef = useRef(new Set());
@@ -189,7 +209,7 @@ export default function ChatArea({ sid, addToast, onRename }) {
           addToast("✅ 压缩完成");
           break;
         case "extension_ui_request":
-          handleExtUI(ev, sid);
+          handleExtUI(ev, sid, addToast);
           break;
       }
     }
@@ -204,6 +224,12 @@ export default function ChatArea({ sid, addToast, onRename }) {
       } else if (resp?.command === "get_available_models") {
         const list = resp.data?.models || [];
         setModels(list);
+      } else if (resp?.command === "get_session_stats" && resp.data) {
+        const cu = resp.data.contextUsage;
+        if (cu) setCtx({ tokens: cu.tokens, contextWindow: cu.contextWindow, percent: cu.percent });
+      } else if (resp?.command === "get_commands") {
+        const list = resp.data?.commands || [];
+        setCommands(list);
       } else if (resp?.command === "set_model" && resp.data) {
         const st = resp.data;
         setModel(st.name || st.id || "");
@@ -225,20 +251,53 @@ export default function ChatArea({ sid, addToast, onRename }) {
     socket.on("session_history", onHistory);
     socket.on("session_renamed", onRenamed);
     socket.on("pi_event", onEvent);
-    socket.on("pi_response", onResponse);
     socket.on("pi_error", onErr);
     socket.on("pi_disconnected", onDC);
     socket.on("workspace_updated", onWsUpd);
 
-    // Fetch model info
-    socket.emit("get_state", { sessionId: sid });
-    socket.emit("get_available_models", { sessionId: sid });
+    // Fetch model info + commands, and poll context usage every 5s.
+    // The freshly-spawned pi process needs a moment to become ready, so
+    // retry the initial queries until all three respond.
+    let gotState = false;
+    let gotModels = false;
+    let gotCommands = false;
+    const handleResponse = (r) => {
+      if (r?.command === "get_state") gotState = true;
+      if (r?.command === "get_available_models") gotModels = true;
+      if (r?.command === "get_commands") gotCommands = true;
+      onResponse(r);
+    };
+    socket.on("pi_response", handleResponse);
+
+    const queryInitial = () => {
+      socket.emit("get_state", { sessionId: sid });
+      socket.emit("get_available_models", { sessionId: sid });
+      socket.emit("get_commands", { sessionId: sid });
+    };
+    queryInitial();
+    socket.emit("get_session_stats", { sessionId: sid });
+
+    const retryTimer = setInterval(() => {
+      if (gotState && gotModels && gotCommands) {
+        clearInterval(retryTimer);
+        return;
+      }
+      queryInitial();
+    }, 2000);
+    const retryStop = setTimeout(() => clearInterval(retryTimer), 20000);
+
+    const statsTimer = setInterval(() => {
+      socket.emit("get_session_stats", { sessionId: sid });
+    }, 5000);
 
     return () => {
+      clearInterval(statsTimer);
+      clearInterval(retryTimer);
+      clearTimeout(retryStop);
       socket.off("session_history", onHistory);
       socket.off("session_renamed", onRenamed);
       socket.off("pi_event", onEvent);
-      socket.off("pi_response", onResponse);
+      socket.off("pi_response", handleResponse);
       socket.off("pi_error", onErr);
       socket.off("pi_disconnected", onDC);
       socket.off("workspace_updated", onWsUpd);
@@ -319,10 +378,46 @@ export default function ChatArea({ sid, addToast, onRename }) {
     }
   }
 
+  // ── 命令补全 ─────────────────────────────────────────────────────────
+  // 输入以 "/" 开头且尚未包含空格时，按前缀过滤可用命令并展示
+  const filteredCmds = (() => {
+    if (!cmdOpen || !input.startsWith("/")) return [];
+    const raw = input.slice(1);
+    const q = raw.split(/\s+/)[0].toLowerCase();
+    const all = [...commands]
+      .filter((c) => c.name && !c.name.startsWith("skill:"))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return all.slice(0, 30);
+    return all.filter((c) => c.name.toLowerCase().startsWith(q)).slice(0, 30);
+  })();
+
+  function pickCmd(c) {
+    setInput(`/${c.name} `);
+    setCmdOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function onInputChange(v) {
+    setInput(v);
+    if (v.startsWith("/") && !v.includes(" ")) setCmdOpen(true);
+    else setCmdOpen(false);
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
+      if (cmdOpen && filteredCmds.length > 0) {
+        e.preventDefault();
+        pickCmd(filteredCmds[0]);
+        return;
+      }
       e.preventDefault();
       send();
+    } else if (e.key === "Tab" && cmdOpen && filteredCmds.length > 0) {
+      e.preventDefault();
+      pickCmd(filteredCmds[0]);
+    } else if (e.key === "Escape" && cmdOpen) {
+      e.preventDefault();
+      setCmdOpen(false);
     }
   }
 
@@ -497,47 +592,140 @@ export default function ChatArea({ sid, addToast, onRename }) {
           </Box>
         )}
 
-        <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
-          <TextField
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            placeholder="输入消息... Enter 发送, Shift+Enter 换行, Ctrl+V 贴图"
-            multiline
-            maxRows={5}
-            fullWidth
-            size="small"
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
-          />
-          {live ? (
-            <Button
-              variant="contained"
-              color="error"
-              onClick={abort}
-              startIcon={<StopIcon />}
-              sx={{ minWidth: 100, height: 40, borderRadius: 3, fontWeight: 700 }}
+        <Box sx={{ position: "relative" }}>
+          {cmdOpen && filteredCmds.length > 0 && (
+            <Paper
+              elevation={3}
+              sx={{
+                position: "absolute",
+                bottom: "100%",
+                left: 0,
+                right: 0,
+                mb: 0.5,
+                maxHeight: 240,
+                overflow: "auto",
+                zIndex: 20,
+                borderRadius: 2,
+              }}
             >
-              中断
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={send}
-              disabled={!input.trim() && !imgs.length}
-              startIcon={<SendIcon />}
-              sx={{ minWidth: 90, height: 40, borderRadius: 3, fontWeight: 700 }}
-            >
-              发送
-            </Button>
+              <List dense disablePadding>
+                {filteredCmds.map((c) => (
+                  <ListItemButton key={c.name} onClick={() => pickCmd(c)} sx={{ px: 1.5, py: 0.5 }}>
+                    <ListItemIcon sx={{ minWidth: 30 }}>
+                      <CommandIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={`/${c.name}`}
+                      secondary={c.description || c.source}
+                      slotProps={{
+                        primary: { fontSize: 13, fontWeight: 600, fontFamily: "monospace" },
+                        secondary: { fontSize: 11, noWrap: true },
+                      }}
+                    />
+                  </ListItemButton>
+                ))}
+              </List>
+            </Paper>
           )}
+
+          <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
+            <TextField
+              inputRef={inputRef}
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onBlur={() => setTimeout(() => setCmdOpen(false), 150)}
+              placeholder="输入消息... / 显示命令, Enter 发送, Shift+Enter 换行"
+              multiline
+              maxRows={5}
+              fullWidth
+              size="small"
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
+            />
+            {live ? (
+              <Button
+                variant="contained"
+                color="error"
+                onClick={abort}
+                startIcon={<StopIcon />}
+                sx={{ minWidth: 100, height: 40, borderRadius: 3, fontWeight: 700 }}
+              >
+                中断
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={send}
+                disabled={!input.trim() && !imgs.length}
+                startIcon={<SendIcon />}
+                sx={{ minWidth: 90, height: 40, borderRadius: 3, fontWeight: 700 }}
+              >
+                发送
+              </Button>
+            )}
+          </Box>
+        </Box>
+      </Box>
+
+      {/* 状态栏：模型 + 上下文窗口占用 */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          px: 2,
+          py: 0.5,
+          borderTop: 1,
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
+      >
+        <Tooltip title="当前模型">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>
+            <ModelIcon sx={{ fontSize: 13, color: "text.secondary", flexShrink: 0 }} />
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.65rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+            >
+              {model || "-"}
+            </Typography>
+          </Box>
+        </Tooltip>
+        <Box sx={{ flex: 1, display: "flex", alignItems: "center", gap: 1 }}>
+          <LinearProgress
+            variant="determinate"
+            value={Math.min(100, ctx?.percent ?? 0)}
+            color={ctx?.percent > 80 ? "error" : ctx?.percent > 60 ? "warning" : "primary"}
+            sx={{ flex: 1, height: 4, borderRadius: 2 }}
+          />
+          <Tooltip title={`上下文 ${fmtTokens(ctx?.tokens)} / ${fmtTokens(ctx?.contextWindow)} tokens`}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
+              <MemoryIcon sx={{ fontSize: 13, color: "text.secondary" }} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem", whiteSpace: "nowrap" }}>
+                {ctx ? `${ctx.percent}% · ${fmtTokens(ctx.tokens)}/${fmtTokens(ctx.contextWindow)}` : "上下文 -"}
+              </Typography>
+            </Box>
+          </Tooltip>
         </Box>
       </Box>
     </>
   );
 }
 
-function handleExtUI(ev, sid) {
+function handleExtUI(ev, sid, addToast) {
+  // Fire-and-forget methods: display but never reply
+  if (ev.method === "notify") {
+    const icon = ev.notifyType === "error" ? "❌" : ev.notifyType === "warning" ? "⚠️" : "ℹ️";
+    addToast(icon + " " + (ev.message || ""), ev.notifyType === "error");
+    return;
+  }
+  if (["setStatus", "setWidget", "setTitle", "set_editor_text"].includes(ev.method)) {
+    return; // informational, no response needed
+  }
+
+  // Dialog methods: reply with the user's choice
   let response;
   switch (ev.method) {
     case "select":
