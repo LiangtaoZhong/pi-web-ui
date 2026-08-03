@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { createPortal } from "react-dom";
 import { Box, Typography, IconButton, Tooltip, CircularProgress, Button } from "@mui/material";
 import {
   Close as CloseIcon,
@@ -46,11 +47,71 @@ function gutterWidth(lineCount) {
   return Math.max(3, digits + 1) + "ch";
 }
 
+// ── 代码面板：memo 隔离，setSel 重渲染时此面板完全不动，保证选区不丢失 ──
+const CodePane = memo(function CodePane({ data, highlighted, lineCount }) {
+  return (
+    <Box sx={{ display: "flex", minWidth: "max-content", fontFamily: "var(--mui-fontFamilies-monospace)" }}>
+      {/* 行号列 */}
+      <Box
+        component="span"
+        aria-hidden
+        sx={(theme) => {
+          const dark = theme.palette.mode === "dark";
+          return {
+            userSelect: "none",
+            flexShrink: 0,
+            textAlign: "right",
+            px: 1.5,
+            py: "14px",
+            borderRight: dark ? "1px solid rgba(247,247,242,0.1)" : "1px solid rgba(30,30,29,0.1)",
+            color: dark ? "#6e6e68" : "#a8a8a1",
+            fontSize: "13px",
+            lineHeight: "1.625",
+            width: gutterWidth(lineCount),
+            minWidth: gutterWidth(lineCount),
+          };
+        }}
+      >
+        {Array.from({ length: lineCount }, (_, i) => (
+          <Box key={i} component="span" sx={{ display: "block" }}>
+            {i + 1}
+          </Box>
+        ))}
+      </Box>
+      {/* 高亮代码 */}
+      <Box
+        component="pre"
+        sx={(theme) => {
+          const dark = theme.palette.mode === "dark";
+          return {
+            m: 0,
+            p: "14px 16px",
+            fontSize: "13px",
+            lineHeight: "1.625",
+            fontFamily: "var(--mui-fontFamilies-monospace)",
+            color: dark ? "#F7F7F2" : "#141413",
+            "& code.hljs": {
+              background: "transparent",
+              padding: 0,
+              fontFamily: "inherit",
+              color: dark ? "#F7F7F2" : "#141413",
+            },
+          };
+        }}
+      >
+        <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
+      </Box>
+    </Box>
+  );
+});
+
+// ── 文件查看器 ──────────────────────────────────────────────────────────────
 export default function FileViewer({ path, onClose, onAddToInput }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [sel, setSel] = useState(null); // {x, y, text}
+  const [sel, setSel] = useState(null); // {x, y} 按钮位置（鼠标释放处）
+  const selRef = useRef(null); // {x, y, text} 选中文本（不依赖易失的 DOM 选区）
   const codeRef = useRef(null);
   const activePathRef = useRef(path);
   useEffect(() => { activePathRef.current = path; }, [path]);
@@ -85,25 +146,31 @@ export default function FileViewer({ path, onClose, onAddToInput }) {
 
   const lineCount = useMemo(() => (data && data.content ? data.content.split("\n").length : 0), [data]);
 
-  // ── 框选检测：document 级 mouseup（框选可能拖出容器外才释放），检查选区锚点 ──
-  const onMouseUp = useCallback(() => {
+  // ── 框选检测：document 级 mouseup（兼容框选时鼠标在容器外释放）──────
+  const onMouseUp = useCallback((e) => {
+    // 点击“添加到输入框”按钮自身时，不清理选区/状态
+    if (e.target && e.target.closest && e.target.closest("[data-sel-toolbar]")) return;
     const selObj = window.getSelection();
-    if (!selObj || selObj.isCollapsed) { setSel(null); return; }
+    if (!selObj || selObj.isCollapsed) {
+      selRef.current = null;
+      setSel(null);
+      return;
+    }
     const text = selObj.toString();
-    if (!text || text.trim().length === 0) { setSel(null); return; }
+    if (!text || text.trim().length === 0) {
+      selRef.current = null;
+      setSel(null);
+      return;
+    }
     const container = codeRef.current;
-    if (!container) { setSel(null); return; }
-    // 选区的锚点（起点）必须在代码容器内，避免误触发
-    if (!container.contains(selObj.anchorNode)) { setSel(null); return; }
-    let range;
-    try { range = selObj.getRangeAt(0); } catch { setSel(null); return; }
-    const rect = range.getBoundingClientRect();
-    // 用 viewport 坐标 + fixed 定位，按钮始终显示在选区旁（不随容器滚动丢失）
-    setSel({
-      x: rect.left,
-      y: rect.bottom,
-      text,
-    });
+    if (!container || !container.contains(selObj.anchorNode)) {
+      selRef.current = null;
+      setSel(null);
+      return;
+    }
+    // 记录选中文本 + 按钮位置 = 鼠标左键释放处（viewport 坐标）
+    selRef.current = { x: e.clientX, y: e.clientY, text };
+    setSel({ x: e.clientX, y: e.clientY });
   }, []);
 
   // 监听 document 的 mouseup，兼容框选时鼠标在容器外释放
@@ -113,7 +180,9 @@ export default function FileViewer({ path, onClose, onAddToInput }) {
   }, [onMouseUp]);
 
   function addSelection() {
-    if (sel && sel.text) onAddToInput(sel.text);
+    const ref = selRef.current;
+    if (ref && ref.text) onAddToInput(ref.text);
+    selRef.current = null;
     window.getSelection()?.removeAllRanges();
     setSel(null);
   }
@@ -206,89 +275,42 @@ export default function FileViewer({ path, onClose, onAddToInput }) {
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: "flex", minWidth: "max-content", fontFamily: "var(--mui-fontFamilies-monospace)" }}>
-            {/* 行号列 */}
-            <Box
-              component="span"
-              aria-hidden
-              sx={(theme) => {
-                const dark = theme.palette.mode === "dark";
-                return {
-                  userSelect: "none",
-                  flexShrink: 0,
-                  textAlign: "right",
-                  px: 1.5,
-                  py: "14px",
-                  borderRight: dark ? "1px solid rgba(247,247,242,0.1)" : "1px solid rgba(30,30,29,0.1)",
-                  color: dark ? "#6e6e68" : "#a8a8a1",
-                  fontSize: "13px",
-                  lineHeight: "1.625",
-                  width: gutterWidth(lineCount),
-                  minWidth: gutterWidth(lineCount),
-                };
-              }}
-            >
-              {Array.from({ length: lineCount }, (_, i) => (
-                <Box key={i} component="span" sx={{ display: "block" }}>
-                  {i + 1}
-                </Box>
-              ))}
-            </Box>
-            {/* 高亮代码 */}
-            <Box
-              component="pre"
-              sx={(theme) => {
-                const dark = theme.palette.mode === "dark";
-                return {
-                  m: 0,
-                  p: "14px 16px",
-                  fontSize: "13px",
-                  lineHeight: "1.625",
-                  fontFamily: "var(--mui-fontFamilies-monospace)",
-                  color: dark ? "#F7F7F2" : "#141413",
-                  "& code.hljs": {
-                    background: "transparent",
-                    padding: 0,
-                    fontFamily: "inherit",
-                    color: dark ? "#F7F7F2" : "#141413",
-                  },
-                };
-              }}
-            >
-              <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-            </Box>
-          </Box>
+          <CodePane data={data} highlighted={highlighted} lineCount={lineCount} />
         )}
 
-        {/* 框选工具条（fixed 定位，viewport 坐标） */}
-        {sel && (
-          <Box
-            sx={{
-              position: "fixed",
-              left: sel.x,
-              top: sel.y + 6,
-              zIndex: 9999,
-              transform: "translateX(-50%)",
-            }}
-          >
-            <Button
-              size="small"
-              variant="contained"
-              onClick={addSelection}
-              startIcon={<AddToInputIcon sx={{ fontSize: 14 }} />}
+        {/* 框选工具条：渲染到 document.body（portal），避免插入代码区 DOM 导致选区丢失；fixed 定位在鼠标释放处 */}
+        {sel &&
+          createPortal(
+            <Box
+              data-sel-toolbar
               sx={{
-                borderRadius: "8px",
-                textTransform: "none",
-                fontWeight: 600,
-                fontSize: "0.72rem",
-                boxShadow: 3,
-                whiteSpace: "nowrap",
+                position: "fixed",
+                left: sel.x,
+                top: sel.y + 10,
+                zIndex: 9999,
+                transform: "translateX(-50%)",
               }}
             >
-              添加到输入框
-            </Button>
-          </Box>
-        )}
+              <Button
+                size="small"
+                variant="contained"
+                onClick={addSelection}
+                onMouseDown={(e) => e.preventDefault()}
+                startIcon={<AddToInputIcon sx={{ fontSize: 14 }} />}
+                sx={{
+                  borderRadius: "8px",
+                  textTransform: "none",
+                  fontWeight: 600,
+                  fontSize: "0.72rem",
+                  boxShadow: 3,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                添加到输入框
+              </Button>
+            </Box>,
+            document.body
+          )}
       </Box>
     </Box>
   );
