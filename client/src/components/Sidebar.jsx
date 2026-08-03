@@ -225,8 +225,10 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenMana
                         {s.streaming ? " · live" : ""}
                       </>
                     }
-                    primaryTypographyProps={{ fontSize: 13, fontWeight: 600, noWrap: true }}
-                    secondaryTypographyProps={{ fontSize: 10, noWrap: true }}
+                    slotProps={{
+                      primary: { fontSize: 13, fontWeight: 600, noWrap: true },
+                      secondary: { fontSize: 10, noWrap: true },
+                    }}
                     sx={{ my: 0 }}
                   />
                   <Tooltip title="重命名">

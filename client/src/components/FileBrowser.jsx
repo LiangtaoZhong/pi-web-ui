@@ -138,7 +138,10 @@ export default function FileBrowser({ onSelect, onClose, currentPath }) {
                 <ListItemIcon sx={{ minWidth: 36 }}>
                   <FolderIcon color="primary" fontSize="small" />
                 </ListItemIcon>
-                <ListItemText primary={it.name} primaryTypographyProps={{ fontSize: 13 }} />
+                <ListItemText
+                  primary={it.name}
+                  slotProps={{ primary: { fontSize: 13 } }}
+                />
               </ListItemButton>
             ))}
           </List>

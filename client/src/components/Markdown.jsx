@@ -95,6 +95,25 @@ function CodeBlock({ language, code }) {
 }
 
 const Markdown = memo(function Markdown({ text }) {
+  const components = {
+    code({ className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || "");
+      const isBlock = className || String(children).includes("\n");
+      const code = String(children).replace(/\n$/, "");
+      if (isBlock) {
+        return <CodeBlock language={match?.[1] || ""} code={code} />;
+      }
+      return <code {...props}>{children}</code>;
+    },
+    a({ href, children }) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      );
+    },
+  };
+
   return (
     <Box
       className="bub-body"
@@ -137,26 +156,10 @@ const Markdown = memo(function Markdown({ text }) {
         "& pre code": { bgcolor: "transparent", px: 0, py: 0 },
         "& input[type=checkbox]": { mr: 0.5, accentColor: "primary.main" },
       }}
-      components={{
-        code({ className, children, ...props }) {
-          const match = /language-(\w+)/.exec(className || "");
-          const isBlock = className || String(children).includes("\n");
-          const code = String(children).replace(/\n$/, "");
-          if (isBlock) {
-            return <CodeBlock language={match?.[1] || ""} code={code} />;
-          }
-          return <code {...props}>{children}</code>;
-        },
-        a({ href, children }) {
-          return (
-            <a href={href} target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          );
-        },
-      }}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text || ""}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {text || ""}
+      </ReactMarkdown>
     </Box>
   );
 });

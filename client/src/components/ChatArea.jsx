@@ -48,6 +48,19 @@ export default function ChatArea({ sid, addToast, onRename }) {
   }, []);
 
   // ── Message dedup helpers ─────────────────────────────────────────────
+  // Merge tool results (from execution events) into a content block list.
+  // Declared before addAssistantMessage (which depends on it) to avoid TDZ.
+  const mergeToolResults = useCallback((content) => {
+    if (!Array.isArray(content)) return content;
+    return content.map((blk) => {
+      if (blk.type === "toolCall") {
+        const tr = toolResultsRef.current[blk.id];
+        if (tr) return { ...blk, result: tr.result, isError: tr.isError };
+      }
+      return blk;
+    });
+  }, []);
+
   // Signature is computed on the RAW (pre-merge) content so a message added
   // at message_end and re-supplied at agent_end (with tool results attached)
   // dedupes correctly instead of double-adding.
@@ -68,18 +81,6 @@ export default function ChatArea({ sid, addToast, onRename }) {
       if (m && m.role === "assistant") set.add(contentSig(m.content));
     }
     seenSigsRef.current = set;
-  }, []);
-
-  // Merge tool results (from execution events) into a content block list
-  const mergeToolResults = useCallback((content) => {
-    if (!Array.isArray(content)) return content;
-    return content.map((blk) => {
-      if (blk.type === "toolCall") {
-        const tr = toolResultsRef.current[blk.id];
-        if (tr) return { ...blk, result: tr.result, isError: tr.isError };
-      }
-      return blk;
-    });
   }, []);
 
   // Update a toolCall block IN PLACE inside completed messages
@@ -126,14 +127,17 @@ export default function ChatArea({ sid, addToast, onRename }) {
           setLive(true);
           setStreamBlocks([]);
           toolResultsRef.current = {};
+          seenSigsRef.current = new Set();
           break;
         case "agent_end":
         case "agent_settled":
           setLive(false);
-          // Flush any final assistant messages from the run
+          // Flush any final assistant messages from the run.
+          // IMPORTANT: pass the RAW content (merge happens inside addAssistantMessage)
+          // so the dedup signature matches what message_end already added.
           for (const m of ev.messages || []) {
             if (m && m.role === "assistant" && m.content) {
-              addAssistantMessage(mergeToolResults(m.content), { model: m.model });
+              addAssistantMessage(m.content, { model: m.model });
             }
           }
           setStreamBlocks([]);
@@ -152,7 +156,8 @@ export default function ChatArea({ sid, addToast, onRename }) {
         case "message_end":
           if (ev.message?.role === "assistant" && ev.message.content) {
             setStreamBlocks([]);
-            addAssistantMessage(mergeToolResults(ev.message.content), { model: ev.message.model });
+            // Pass RAW content (merge happens inside addAssistantMessage)
+            addAssistantMessage(ev.message.content, { model: ev.message.model });
           }
           break;
         case "tool_execution_start":

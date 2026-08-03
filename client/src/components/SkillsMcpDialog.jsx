@@ -216,8 +216,10 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
                     <ListItemText
                       primary={s.name}
                       secondary={s.description || "（无描述）"}
-                      primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
-                      secondaryTypographyProps={{ fontSize: 11 }}
+                      slotProps={{
+                        primary: { fontSize: 13, fontWeight: 600 },
+                        secondary: { fontSize: 11 },
+                      }}
                     />
                   </ListItem>
                 ))}
@@ -294,7 +296,7 @@ export default function SkillsMcpDialog({ open, onClose, addToast }) {
                           {m.args?.join(" ") || ""}
                         </Box>
                       }
-                      primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
+                      slotProps={{ primary: { fontSize: 13, fontWeight: 600 } }}
                     />
                   </ListItem>
                 ))}
