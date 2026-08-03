@@ -1,11 +1,8 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   Box,
   Paper,
   Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   CircularProgress,
 } from "@mui/material";
 import {
@@ -16,7 +13,244 @@ import {
 } from "@mui/icons-material";
 import Markdown from "./Markdown";
 
-// Render content blocks array (text / thinking / toolCall)
+// ── 思考过程：紧凑单行细条，点击展开 ────────────────────────────────
+function ThinkingBlock({ blk, active }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box sx={{ my: 0.5 }}>
+      <Box
+        component="button"
+        onClick={() => setOpen(!open)}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0.75,
+          width: "100%",
+          px: 1,
+          py: 0.3,
+          borderRadius: 1,
+          cursor: "pointer",
+          bgcolor: "action.hover",
+          border: 1,
+          borderColor: "divider",
+          fontFamily: "inherit",
+          fontSize: "0.7rem",
+          color: "text.disabled",
+          textAlign: "left",
+          ...(active && {
+            animation: "thinkPulse 1.8s ease-in-out infinite",
+            "@keyframes thinkPulse": {
+              "0%,100%": { opacity: 1 },
+              "50%": { opacity: 0.5 },
+            },
+          }),
+        }}
+      >
+        {active ? (
+          <CircularProgress size={11} thickness={5} sx={{ color: "text.disabled", flexShrink: 0 }} />
+        ) : (
+          <ThinkIcon sx={{ fontSize: 13, color: "text.disabled", flexShrink: 0 }} />
+        )}
+        <Typography variant="caption" sx={{ fontSize: "0.65rem", color: "text.disabled" }}>
+          思考过程
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <ExpandIcon
+          sx={{
+            fontSize: 14,
+            color: "text.disabled",
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .2s",
+          }}
+        />
+      </Box>
+      {open && (
+        <Box
+          sx={{
+            mt: 0.5,
+            px: 1.5,
+            py: 0.75,
+            bgcolor: "action.hover",
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 1,
+            maxHeight: 260,
+            overflow: "auto",
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ whiteSpace: "pre-wrap", fontSize: "0.7rem", opacity: 0.75, lineHeight: 1.6 }}
+          >
+            {blk.thinking || ""}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ── 工具调用（bash 等）：紧凑单行工具条，点击展开详情 ───────────────
+function ToolCallBlock({ blk }) {
+  const [open, setOpen] = useState(false);
+  const isErr = blk.isError;
+  const isRunning = blk.executing;
+  const args = blk.arguments;
+  const cmd =
+    args && typeof args === "object" && !Array.isArray(args) ? args.command : "";
+  const label = cmd ? `$ ${cmd}` : (blk.name || "tool");
+  const argsStr = args
+    ? typeof args === "string"
+      ? args
+      : JSON.stringify(args, null, 2)
+    : "";
+  const resultStr =
+    typeof blk.result === "string"
+      ? blk.result
+      : blk.result
+        ? JSON.stringify(blk.result, null, 2)
+        : "";
+
+  const statusColor = isErr ? "error.main" : isRunning ? "primary.main" : "success.main";
+  const statusText = isErr ? "失败" : isRunning ? "运行中" : "完成";
+
+  return (
+    <Box sx={{ my: 0.5 }}>
+      <Box
+        component="button"
+        onClick={() => setOpen(!open)}
+        sx={(theme) => {
+          const dark = theme.palette.mode === "dark";
+          return {
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            width: "100%",
+            px: 1,
+            py: 0.3,
+            borderRadius: 1,
+            cursor: "pointer",
+            border: 1,
+            fontFamily: "inherit",
+            fontSize: "0.7rem",
+            textAlign: "left",
+            color: "text.primary",
+            bgcolor: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+            borderColor: isErr
+              ? (dark ? "rgba(255,92,108,0.4)" : "rgba(230,69,85,0.4)")
+              : isRunning
+                ? (dark ? "rgba(108,140,255,0.5)" : "rgba(79,110,247,0.5)")
+                : "divider",
+            ...(isRunning && {
+              animation: "toolPulse 1.6s ease-in-out infinite",
+              "@keyframes toolPulse": {
+                "0%,100%": {
+                  borderColor: dark ? "rgba(108,140,255,0.3)" : "rgba(79,110,247,0.3)",
+                },
+                "50%": {
+                  borderColor: dark ? "rgba(108,140,255,0.9)" : "rgba(79,110,247,0.9)",
+                },
+              },
+            }),
+          };
+        }}
+      >
+        {isRunning ? (
+          <CircularProgress size={11} thickness={5} sx={{ color: "primary.main", flexShrink: 0 }} />
+        ) : isErr ? (
+          <ErrorIcon sx={{ fontSize: 13, color: "error.main", flexShrink: 0 }} />
+        ) : (
+          <DoneIcon sx={{ fontSize: 13, color: "success.main", flexShrink: 0 }} />
+        )}
+        <Typography
+          variant="caption"
+          sx={{
+            fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+            fontSize: "0.7rem",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            color: "text.primary",
+          }}
+        >
+          {label}
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <Typography
+          variant="caption"
+          sx={{ fontSize: "0.62rem", color: statusColor, flexShrink: 0 }}
+        >
+          {statusText}
+        </Typography>
+        <ExpandIcon
+          sx={{
+            fontSize: 14,
+            color: "text.disabled",
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .2s",
+            flexShrink: 0,
+          }}
+        />
+      </Box>
+
+      {open && (
+        <Box
+          sx={{
+            mt: 0.5,
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 1,
+            overflow: "hidden",
+          }}
+        >
+          {argsStr && (
+            <Box sx={{ px: 1.5, py: 0.75, borderBottom: 1, borderColor: "divider" }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+                  fontSize: "0.7rem",
+                  color: "text.secondary",
+                }}
+              >
+                {argsStr}
+              </Typography>
+            </Box>
+          )}
+          {resultStr && (
+            <Box
+              sx={(theme) => ({
+                px: 1.5,
+                py: 0.75,
+                maxHeight: 240,
+                overflow: "auto",
+                bgcolor: theme.palette.mode === "dark" ? "#1a1d2e" : "grey.100",
+              })}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+                  fontSize: "0.72rem",
+                  lineHeight: 1.5,
+                }}
+              >
+                {resultStr}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ── 渲染内容块数组 (text / thinking / toolCall) ──────────────────────
 function ContentBlocks({ content, isStreaming }) {
   if (!content) return null;
   if (typeof content === "string") return <Markdown text={content} />;
@@ -38,162 +272,10 @@ function ContentBlocks({ content, isStreaming }) {
     } else {
       flushText();
       if (blk.type === "thinking") {
-        // Only the last thinking block of a live (streaming) message is "active"
-        const thinkingActive = isStreaming && i === content.length - 1;
-        elements.push(
-          <Accordion
-            key={`think-${i}`}
-            disableGutters
-            sx={{
-              my: 0.5,
-              bgcolor: "action.hover",
-              border: 1,
-              borderColor: "divider",
-              "&:before": { display: "none" },
-              boxShadow: 0,
-              borderRadius: 1.5,
-              ...(thinkingActive && {
-                animation: "thinkPulse 1.8s ease-in-out infinite",
-                "@keyframes thinkPulse": {
-                  "0%,100%": { opacity: 1 },
-                  "50%": { opacity: 0.55 },
-                },
-              }),
-            }}
-          >
-            <AccordionSummary
-              expandIcon={<ExpandIcon sx={{ fontSize: 14, color: "text.disabled" }} />}
-              sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.25 } }}
-            >
-              {thinkingActive ? (
-                <CircularProgress size={12} thickness={5} sx={{ mr: 0.75, color: "text.disabled" }} />
-              ) : (
-                <ThinkIcon sx={{ fontSize: 13, mr: 0.5, color: "text.disabled" }} />
-              )}
-              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.65rem" }}>
-                思考过程
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails sx={{ pt: 0, pb: 1 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  lineHeight: 1.6,
-                  fontSize: "0.7rem",
-                  opacity: 0.7,
-                }}
-              >
-                {blk.thinking || ""}
-              </Typography>
-            </AccordionDetails>
-          </Accordion>
-        );
+        const active = isStreaming && i === content.length - 1;
+        elements.push(<ThinkingBlock key={`think-${i}`} blk={blk} active={active} />);
       } else if (blk.type === "toolCall") {
-        const isErr = blk.isError;
-        const isRunning = blk.executing;
-        const argsStr = blk.arguments
-          ? typeof blk.arguments === "string"
-            ? blk.arguments
-            : JSON.stringify(blk.arguments, null, 2)
-          : "";
-
-        // Theme-aware tool card styling
-        const toolSx = (theme) => {
-          const dark = theme.palette.mode === "dark";
-          let bg, border;
-          if (isErr) {
-            bg = dark ? "rgba(255,92,108,0.1)" : "rgba(230,69,85,0.07)";
-            border = dark ? "1px solid rgba(255,92,108,0.25)" : "1px solid rgba(230,69,85,0.25)";
-          } else if (isRunning) {
-            bg = dark ? "rgba(108,140,255,0.08)" : "rgba(79,110,247,0.07)";
-            border = dark ? "1px solid rgba(108,140,255,0.35)" : "1px solid rgba(79,110,247,0.35)";
-          } else {
-            bg = dark ? "rgba(68,217,168,0.05)" : "rgba(46,175,125,0.05)";
-            border = dark ? "1px solid rgba(68,217,168,0.15)" : "1px solid rgba(46,175,125,0.15)";
-          }
-          return {
-            my: 0.5,
-            borderRadius: 1.5,
-            bgcolor: bg,
-            border,
-            "&:before": { display: "none" },
-            boxShadow: 0,
-            ...(isRunning && {
-              animation: "toolPulse 1.6s ease-in-out infinite",
-              "@keyframes toolPulse": {
-                "0%,100%": { borderColor: dark ? "rgba(108,140,255,0.25)" : "rgba(79,110,247,0.25)" },
-                "50%": { borderColor: dark ? "rgba(108,140,255,0.8)" : "rgba(79,110,247,0.8)" },
-              },
-            }),
-          };
-        };
-
-        elements.push(
-          <Accordion key={`tool-${i}`} disableGutters sx={toolSx}>
-            <AccordionSummary expandIcon={<ExpandIcon sx={{ fontSize: 14 }} />}>
-              {isRunning ? (
-                <CircularProgress size={13} thickness={5} sx={{ mr: 0.75, color: "primary.main" }} />
-              ) : isErr ? (
-                <ErrorIcon sx={{ fontSize: 14, mr: 0.5, color: "error.main" }} />
-              ) : (
-                <DoneIcon sx={{ fontSize: 14, mr: 0.5, color: "success.main" }} />
-              )}
-              <Typography
-                variant="caption"
-                fontWeight={600}
-                color={isErr ? "error.main" : isRunning ? "primary.main" : "success.main"}
-              >
-                {blk.name || "tool"}
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails sx={{ pt: 0 }}>
-              {argsStr && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                    fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
-                    fontSize: "0.7rem",
-                    mb: 0.5,
-                    display: "block",
-                  }}
-                >
-                  {argsStr}
-                </Typography>
-              )}
-              {blk.result && (
-                <Paper
-                  variant="outlined"
-                  sx={(theme) => ({
-                    p: 1,
-                    maxHeight: 220,
-                    overflow: "auto",
-                    bgcolor: theme.palette.mode === "dark" ? "#1a1d2e" : "grey.100",
-                    borderColor: theme.palette.mode === "dark" ? "#2a2d3e" : "divider",
-                  })}
-                >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
-                      fontSize: "0.72rem",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {typeof blk.result === "string"
-                      ? blk.result
-                      : JSON.stringify(blk.result, null, 2)}
-                  </Typography>
-                </Paper>
-              )}
-            </AccordionDetails>
-          </Accordion>
-        );
+        elements.push(<ToolCallBlock key={`tool-${i}`} blk={blk} />);
       }
     }
   });
