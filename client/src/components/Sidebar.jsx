@@ -1,66 +1,50 @@
 import { useState, useEffect } from "react";
 import { escape } from "../utils/markdown";
-import { getSocket, saveActiveSid } from "../hooks/useSocket";
+import socket from "../hooks/useSocket";
 
-const socket = getSocket();
+const LS = "pi-web-ui-sid";
+const LS_T = "pi-web-ui-theme";
 
-export default function Sidebar({ activeSid, setActiveSid, addToast }) {
-  const [sessions, setSessions] = useState([]);
+export default function Sidebar({ sid, onSelect, onNew }) {
+  const [list, setList] = useState([]);
 
-  const refresh = async () => {
-    try {
-      const r = await fetch("/api/sessions");
-      setSessions(await r.json());
-    } catch (e) {
-      console.error("Failed to fetch sessions:", e);
-    }
-  };
+  async function refresh() {
+    try { const r = await fetch("/api/sessions"); setList(await r.json()); } catch {}
+  }
+
+  useEffect(() => { refresh(); const t = setInterval(refresh, 8000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 8000);
-
-    const onCreated = (d) => {
-      setActiveSid(d.id);
-      saveActiveSid(d.id);
-      refresh();
-    };
-    const onDeleted = () => refresh();
-
+    function onCreated() { refresh(); }
+    function onDeleted() { refresh(); }
     socket.on("session_created", onCreated);
     socket.on("session_deleted", onDeleted);
+    return () => { socket.off("session_created", onCreated); socket.off("session_deleted", onDeleted); };
+  }, []);
 
-    return () => {
-      clearInterval(interval);
-      socket.off("session_created", onCreated);
-      socket.off("session_deleted", onDeleted);
-    };
-  }, [setActiveSid]);
+  function create() {
+    socket.emit("session_create", { name: "Session " + new Date().toLocaleTimeString("zh-CN"), workspace: "" });
+  }
 
-  const create = () => {
-    socket.emit("session_create", {
-      name: "Session " + new Date().toLocaleTimeString("zh-CN"),
-      workspace: "",
-    });
-  };
+  async function del(id) {
+    if (!confirm("确定删除？")) return;
+    await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+    refresh();
+  }
 
-  const del = async (id) => {
-    if (!confirm("确定删除此 Session？")) return;
-    try {
-      await fetch(`/api/sessions/${id}`, { method: "DELETE" });
-      if (activeSid === id) setActiveSid(null);
-      refresh();
-    } catch (e) {
-      addToast("删除失败: " + e.message, true);
-    }
-  };
-
-  const join = (id) => {
-    if (id === activeSid) return;
-    setActiveSid(id);
-    saveActiveSid(id);
+  function join(id) {
+    if (id === sid) return;
+    localStorage.setItem(LS, id);
+    onSelect(id);
     socket.emit("session_join", { sessionId: id });
-  };
+  }
+
+  function toggleTheme() {
+    const h = document.documentElement;
+    const n = h.getAttribute("data-theme") === "light" ? "dark" : "light";
+    h.setAttribute("data-theme", n);
+    localStorage.setItem(LS_T, n);
+  }
 
   return (
     <aside className="sidebar">
@@ -71,36 +55,24 @@ export default function Sidebar({ activeSid, setActiveSid, addToast }) {
           </svg>
           Pi Web UI
         </span>
-        <button className="theme-btn" onClick={() => {
-          const h = document.documentElement;
-          const n = h.getAttribute("data-theme") === "light" ? "dark" : "light";
-          h.setAttribute("data-theme", n);
-          localStorage.setItem("pi-web-ui-theme", n);
-        }} title="切换主题"></button>
+        <button className="theme-btn" onClick={toggleTheme} title="切换主题" />
       </div>
 
       <div className="sess-list">
-        {sessions.length === 0 ? (
-          <div style={{ padding: 16, color: "var(--text2)", fontSize: 13, textAlign: "center" }}>
-            暂无 Session<br /><small>点击「+ 新建」开始</small>
-          </div>
-        ) : (
-          sessions.map((s) => (
-            <div
-              key={s.id}
-              className={"sess-item" + (s.id === activeSid ? " active" : "")}
-              onClick={() => join(s.id)}
-            >
-              <div className="si-av">💬</div>
-              <div className="si-info">
-                <div className="si-name">{escape(s.name)}</div>
-                <div className="si-ws">{escape(s.workspace)}</div>
-                <div className="si-meta">{s.messageCount || 0} msg{s.streaming ? " · live" : ""}</div>
+        {list.length === 0
+          ? <div style={{ padding: 16, color: "var(--text2)", fontSize: 13, textAlign: "center" }}>暂无<br /><small>点击「+ 新建」开始</small></div>
+          : list.map(s => (
+              <div key={s.id} className={"sess-item" + (s.id === sid ? " active" : "")} onClick={() => join(s.id)}>
+                <div className="si-av">💬</div>
+                <div className="si-info">
+                  <div className="si-name">{escape(s.name)}</div>
+                  <div className="si-ws">{escape(s.workspace)}</div>
+                  <div className="si-meta">{s.messageCount || 0} msg{s.streaming ? " · live" : ""}</div>
+                </div>
+                <button className="si-del" onClick={e => { e.stopPropagation(); del(s.id); }}>✕</button>
               </div>
-              <button className="si-del" onClick={(e) => { e.stopPropagation(); del(s.id); }}>✕</button>
-            </div>
-          ))
-        )}
+            ))
+        }
       </div>
 
       <div className="sidebar-foot">
