@@ -30,7 +30,7 @@ import {
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
-import RightNav from "./RightNav";
+import { UnfoldMore as DragHandleIcon } from "@mui/icons-material";
 
 function contentSig(content) {
   try { return JSON.stringify(content); } catch { return String(content); }
@@ -70,6 +70,7 @@ export default function ChatArea({
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdIndex, setCmdIndex] = useState(0);
   const inputRef = useRef(null);
+  const manualHRef = useRef(null); // 输入框手动拉伸高度 (px)，实时 DOM 控制
 
   const bottomRef = useRef(null);
   const seenSigsRef = useRef(new Set());
@@ -414,6 +415,16 @@ export default function ChatArea({
 
   function onInputChange(v) {
     setInput(v);
+    // 手动拉伸后，输入内容时保持高度（防止 autosize 缩回）
+    if (manualHRef.current) {
+      requestAnimationFrame(() => {
+        const ta = inputRef.current;
+        if (ta) {
+          ta.style.height = manualHRef.current + "px";
+          ta.style.overflowY = "auto";
+        }
+      });
+    }
     if (v.startsWith("/") && !v.includes(" ")) {
       setCmdOpen(true);
       setCmdIndex(0);
@@ -470,11 +481,38 @@ export default function ChatArea({
     if (text && text !== "(image)") userQuestions.push({ text: text.slice(0, 60), idx });
   });
 
-  // 滚动定位到某条消息
-  const scrollToMsg = useCallback((idx) => {
-    const el = document.getElementById(`chat-msg-${idx}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
+  // ── 输入框上下拖拽拉升 ──────────────────────────────────────────────
+  function onDragStart(e) {
+    e.preventDefault();
+    const ta = inputRef.current;
+    const startY = e.clientY;
+    const startH = ta ? ta.getBoundingClientRect().height : 56;
+    function move(ev) {
+      const h = Math.min(Math.max(startH + (ev.clientY - startY), 44), 320);
+      manualHRef.current = Math.round(h);
+      if (ta) {
+        ta.style.height = manualHRef.current + "px";
+        ta.style.overflowY = "auto";
+      }
+    }
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+    }
+    document.body.style.cursor = "ns-resize";
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  function resetInputHeight() {
+    manualHRef.current = null;
+    const ta = inputRef.current;
+    if (ta) {
+      ta.style.height = "";
+      ta.style.overflowY = "hidden";
+    }
+  }
   return (
     <>
       {/* Header */}
@@ -559,18 +597,54 @@ export default function ChatArea({
                 </Typography>
               </Box>
             ) : (
-              allMessages.map((m, i) => (
-                <div key={m.streaming ? "live" : `msg-${i}`} id={`chat-msg-${i}`}>
-                  <MessageBubble msg={m} />
-                </div>
-              ))
+              allMessages.map((m, i) => {
+                // 用户消息的提问序号（融入消息流，替代右侧悬浮导航）
+                const qNum = m.role === "user" ? userQuestions.findIndex((q) => q.idx === i) : -1;
+                return (
+                  <div key={m.streaming ? "live" : `msg-${i}`} id={`chat-msg-${i}`}>
+                    {qNum >= 0 && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mb: 0.5,
+                          userSelect: "none",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 15,
+                            height: 15,
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            bgcolor: "primary.main",
+                            color: "#fff",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {qNum + 1}
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          sx={{ fontSize: "0.65rem", color: "text.disabled", letterSpacing: 0.5 }}
+                        >
+                          提问 {qNum + 1}
+                        </Typography>
+                      </Box>
+                    )}
+                    <MessageBubble msg={m} />
+                  </div>
+                );
+              })
             )}
             <div ref={bottomRef} />
           </Box>
         </Box>
-
-        {/* 右侧提问导航 */}
-        <RightNav questions={userQuestions} onJump={scrollToMsg} />
       </Box>
 
       {/* Input */}
@@ -693,8 +767,33 @@ export default function ChatArea({
                 sx={{
                   px: 1.5,
                   "& .MuiInputBase-root": { fontSize: "0.9rem", py: 1 },
+                  "& textarea": {
+                    overflowX: "hidden",
+                    wordBreak: "break-word",
+                    resize: "none",
+                  },
                 }}
               />
+              {/* 拖拽手柄：上下自由拉升输入框高度（双击还原） */}
+              <Box
+                onMouseDown={onDragStart}
+                onDoubleClick={resetInputHeight}
+                title="拖动调整高度（双击还原）"
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 12,
+                  cursor: "ns-resize",
+                  color: "text.disabled",
+                  opacity: 0.5,
+                  "&:hover": { opacity: 1, color: "primary.main" },
+                  transition: "opacity .15s, color .15s",
+                  userSelect: "none",
+                }}
+              >
+                <DragHandleIcon sx={{ fontSize: 14 }} />
+              </Box>
             </Paper>
 
             {/* 底部工具行：提示 + 模型切换 + 发送 */}

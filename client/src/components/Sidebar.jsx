@@ -24,10 +24,14 @@ import {
   Edit as EditIcon,
   Settings as SettingsIcon,
   Chat as ChatIcon,
+  MenuOpen as CollapseIcon,
+  Menu as ExpandIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 
 const DRAWER_WIDTH = 260;
+const DRAWER_COLLAPSED = 60;
+const LS_SIDEBAR = "pi-web-ui-sidebar";
 
 function RenameDialog({ open, initial, onClose, onConfirm }) {
   const [value, setValue] = useState(initial || "");
@@ -65,6 +69,15 @@ function RenameDialog({ open, initial, onClose, onConfirm }) {
 export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSettings }) {
   const [list, setList] = useState([]);
   const [renameId, setRenameId] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(LS_SIDEBAR) === "1");
+  const width = collapsed ? DRAWER_COLLAPSED : DRAWER_WIDTH;
+
+  function toggleCollapse() {
+    setCollapsed((c) => {
+      localStorage.setItem(LS_SIDEBAR, c ? "0" : "1");
+      return !c;
+    });
+  }
 
   async function refresh() {
     try {
@@ -130,34 +143,85 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
       <Drawer
         variant="permanent"
         sx={{
-          width: DRAWER_WIDTH,
+          width,
           flexShrink: 0,
+          transition: "width .2s ease",
           "& .MuiDrawer-paper": {
-            width: DRAWER_WIDTH,
+            width,
             boxSizing: "border-box",
             borderRight: 1,
             borderColor: "divider",
             bgcolor: "background.default",
+            overflowX: "hidden",
+            transition: "width .2s ease",
           },
         }}
       >
         {/* Header / logo */}
-        <Box sx={{ display: "flex", alignItems: "center", px: 2, py: 1.5 }}>
-          <Typography variant="subtitle1" fontWeight={800} sx={{ color: "text.primary", fontSize: 16 }}>
-            Pi Web UI
-          </Typography>
-          <Box sx={{ flex: 1 }} />
-          <Tooltip title={mode === "dark" ? "浅色模式" : "深色模式"}>
-            <IconButton size="small" onClick={onToggleTheme} sx={{ color: "text.secondary" }}>
-              {mode === "dark" ? <span style={{ fontSize: 15 }}>☀️</span> : <span style={{ fontSize: 15 }}>🌙</span>}
-            </IconButton>
-          </Tooltip>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            px: collapsed ? 0.75 : 2,
+            py: 1.5,
+            gap: 0.5,
+            ...(collapsed && { flexDirection: "column", gap: 0.75 }),
+          }}
+        >
+          {collapsed ? (
+            <>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "8px",
+                  bgcolor: "primary.main",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                P
+              </Box>
+              <Tooltip title={mode === "dark" ? "浅色模式" : "深色模式"} placement="right">
+                <IconButton size="small" onClick={onToggleTheme} sx={{ color: "text.secondary" }}>
+                  {mode === "dark" ? <span style={{ fontSize: 15 }}>☀️</span> : <span style={{ fontSize: 15 }}>🌙</span>}
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="展开侧边栏" placement="right">
+                <IconButton size="small" onClick={toggleCollapse} sx={{ color: "text.secondary" }}>
+                  <ExpandIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <Typography variant="subtitle1" fontWeight={800} sx={{ color: "text.primary", fontSize: 16 }}>
+                Pi Web UI
+              </Typography>
+              <Box sx={{ flex: 1 }} />
+              <Tooltip title={mode === "dark" ? "浅色模式" : "深色模式"}>
+                <IconButton size="small" onClick={onToggleTheme} sx={{ color: "text.secondary" }}>
+                  {mode === "dark" ? <span style={{ fontSize: 15 }}>☀️</span> : <span style={{ fontSize: 15 }}>🌙</span>}
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="收起侧边栏">
+                <IconButton size="small" onClick={toggleCollapse} sx={{ color: "text.secondary" }}>
+                  <CollapseIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Box>
 
         <Divider />
 
         {/* Session list */}
-        <Box sx={{ flex: 1, overflow: "auto", py: 0.5 }}>
+        <Box sx={{ flex: 1, overflow: "auto", py: 0.5, ...(collapsed && { display: "none" }) }}>
           {list.length === 0 ? (
             <Box sx={{ p: 3, textAlign: "center" }}>
               <Typography variant="body2" color="text.secondary">暂无会话</Typography>
@@ -243,23 +307,43 @@ export default function Sidebar({ sid, onSelect, mode, onToggleTheme, onOpenSett
         <Divider />
 
         {/* Footer: new session + settings */}
-        <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.5 }}>
-          <Button
-            variant="text"
-            startIcon={<AddIcon />}
-            onClick={create}
-            sx={{ justifyContent: "flex-start", px: 1.5, fontWeight: 600, fontSize: 13, color: "text.primary" }}
-          >
-            新建会话
-          </Button>
-          <Button
-            variant="text"
-            startIcon={<SettingsIcon />}
-            onClick={onOpenSettings}
-            sx={{ justifyContent: "flex-start", px: 1.5, fontWeight: 600, fontSize: 13, color: "text.secondary" }}
-          >
-            设置
-          </Button>
+        <Box sx={{ p: collapsed ? 0.75 : 1, display: "flex", flexDirection: "column", gap: 0.5 }}>
+          <Tooltip title="新建会话" placement="right">
+            <Button
+              variant="text"
+              startIcon={<AddIcon />}
+              onClick={create}
+              sx={{
+                justifyContent: collapsed ? "center" : "flex-start",
+                px: collapsed ? 1 : 1.5,
+                fontWeight: 600,
+                fontSize: 13,
+                color: "text.primary",
+                minWidth: 0,
+                "& .MuiButton-startIcon": collapsed ? { m: 0 } : undefined,
+              }}
+            >
+              {!collapsed && "新建会话"}
+            </Button>
+          </Tooltip>
+          <Tooltip title="设置" placement="right">
+            <Button
+              variant="text"
+              startIcon={<SettingsIcon />}
+              onClick={onOpenSettings}
+              sx={{
+                justifyContent: collapsed ? "center" : "flex-start",
+                px: collapsed ? 1 : 1.5,
+                fontWeight: 600,
+                fontSize: 13,
+                color: "text.secondary",
+                minWidth: 0,
+                "& .MuiButton-startIcon": collapsed ? { m: 0 } : undefined,
+              }}
+            >
+              {!collapsed && "设置"}
+            </Button>
+          </Tooltip>
         </Box>
       </Drawer>
 
