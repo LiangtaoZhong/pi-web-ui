@@ -8,7 +8,8 @@
     "dev": "echo '需要两个终端:\\n  终端1: npm run dev:server\\n  终端2: npm run dev:client\\n  然后访问 http://localhost:5173'",
     "dev:server": "node server.js",
     "dev:client": "cd client && npm run dev",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm run build",
+    "test": "node test/e2e.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
