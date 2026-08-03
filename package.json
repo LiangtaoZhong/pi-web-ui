@@ -1,10 +1,15 @@
 {
   "name": "pi-web-ui",
-  "version": "1.0.0",
-  "description": "Web UI for Pi Coding Agent",
+  "version": "2.0.0",
+  "description": "React + Vite Web UI for Pi Coding Agent",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js & cd client && npm run dev",
+    "dev:server": "node server.js",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "prod": "cd client && npm run build && cd .. && node server.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",

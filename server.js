@@ -274,7 +274,14 @@ function sendRPC(sessionId, cmd) {
 }
 
 // ─── REST API ──────────────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, "public")));
+// Serve Vite build in production, fallback to old public/
+const clientDist = path.join(__dirname, "client", "dist");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  console.log("Serving Vite production build");
+} else {
+  app.use(express.static(path.join(__dirname, "public")));
+}
 
 // List sessions
 app.get("/api/sessions", (_req, res) => {
