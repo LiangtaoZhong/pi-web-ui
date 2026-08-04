@@ -79,6 +79,7 @@ export default function ChatArea({
   const cmdAgentRef = useRef(false); // 命令轮触发了 agent（等 agent_end 结束）
   const cmdPanelRef = useRef(null);
   const [cmdFade, setCmdFade] = useState(false); // 命令面板淡出
+  const [cmdHover, setCmdHover] = useState(false); // 鼠标悬停在面板上时不淡出
   const inputRef = useRef(null);
   const manualHRef = useRef(null); // 输入框手动拉伸高度 (px)，实时 DOM 控制
 
@@ -98,16 +99,17 @@ export default function ChatArea({
     if (el) el.scrollTop = el.scrollHeight;
   }, [cmdPanel]);
 
-  // 命令完成/失败后 5 秒自动淡出
+  // 命令完成/失败后 3 秒自动淡出；鼠标悬停在面板上时暂停淡出，移出后重新计时
   useEffect(() => {
     if (!cmdPanel || cmdPanel.status === "running") {
       setCmdFade(false);
       return;
     }
+    if (cmdHover) return; // 鼠标在面板上，保持可见
     const t1 = setTimeout(() => setCmdFade(true), 3000);
     const t2 = setTimeout(() => { setCmdFade(false); setCmdPanel(null); }, 3350);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [cmdPanel?.status, cmdPanel?.cmd]);
+  }, [cmdPanel?.status, cmdPanel?.cmd, cmdHover]);
 
   // ── Message dedup helpers ─────────────────────────────────────────────
   // Merge tool results (from execution events) into a content block list.
@@ -978,6 +980,8 @@ export default function ChatArea({
               <Paper
                 ref={cmdPanelRef}
                 elevation={4}
+                onMouseEnter={() => { setCmdHover(true); setCmdFade(false); }}
+                onMouseLeave={() => setCmdHover(false)}
                 sx={(theme) => {
                   const dark = theme.palette.mode === "dark";
                   return {
