@@ -104,8 +104,8 @@ export default function ChatArea({
       setCmdFade(false);
       return;
     }
-    const t1 = setTimeout(() => setCmdFade(true), 5000);
-    const t2 = setTimeout(() => { setCmdFade(false); setCmdPanel(null); }, 5350);
+    const t1 = setTimeout(() => setCmdFade(true), 3000);
+    const t2 = setTimeout(() => { setCmdFade(false); setCmdPanel(null); }, 3350);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [cmdPanel?.status, cmdPanel?.cmd]);
 
@@ -880,8 +880,8 @@ export default function ChatArea({
                     overflow: "auto",
                     zIndex: 20,
                     borderRadius: 2,
-                    bgcolor: dark ? "#1B1B1A" : "#FFFFFF",
-                    border: dark ? "1px solid rgba(247,247,242,0.14)" : "1px solid rgba(30,30,29,0.15)",
+                    bgcolor: dark ? "#1B1B1A" : "background.default",
+                    border: dark ? "1px solid rgba(247,247,242,0.14)" : "1px solid " + theme.palette.divider,
                     opacity: cmdFade ? 0 : 1,
                     transition: "opacity 0.35s ease",
                   };
@@ -896,10 +896,10 @@ export default function ChatArea({
                       gap: 1,
                       px: 1.5,
                       py: 0.75,
-                      borderBottom: dark ? "1px solid rgba(247,247,242,0.1)" : "1px solid rgba(30,30,29,0.1)",
+                      borderBottom: dark ? "1px solid rgba(247,247,242,0.1)" : "1px solid " + theme.palette.divider,
                       position: "sticky",
                       top: 0,
-                      bgcolor: dark ? "#1B1B1A" : "#FFFFFF",
+                      bgcolor: dark ? "#1B1B1A" : "background.default",
                       zIndex: 1,
                     };
                   }}
@@ -907,7 +907,7 @@ export default function ChatArea({
                   <CommandIcon
                     sx={(theme) => ({
                       fontSize: 14,
-                      color: theme.palette.mode === "dark" ? "#8B949E" : "#6E6E68",
+                      color: theme.palette.primary.main,
                       flexShrink: 0,
                     })}
                   />
