@@ -176,6 +176,16 @@ export default function ChatArea({
   }
 
   // ── 内置命令（Web UI 本地处理，不发送给 LLM）─────────────────────────
+  const BUILTIN_CMD_DESC = {
+    model: "选择模型（列出可用模型）",
+    compact: "压缩上下文",
+    session: "显示会话信息",
+    hotkeys: "显示快捷键",
+    settings: "打开设置",
+    new: "新建会话",
+    name: "重命名会话 <新名字>",
+    help: "显示所有可用命令",
+  };
   const BUILTIN_ACTIONS = {
     model: () => {
       const list = models.length
@@ -631,9 +641,18 @@ export default function ChatArea({
     if (!cmdOpen || !input.startsWith("/")) return [];
     const raw = input.slice(1);
     const q = raw.split(/\s+/)[0].toLowerCase();
-    const all = [...commands]
-      .filter((c) => c.name && !c.name.startsWith("skill:"))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const all = [
+      // 内置命令（Web UI 本地执行）
+      ...Object.entries(BUILTIN_CMD_DESC).map(([name, description]) => ({
+        name,
+        description,
+        source: "内置",
+      })),
+      // 扩展 / 模板命令（Pi 执行）
+      ...commands
+        .filter((c) => c.name && !c.name.startsWith("skill:"))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ].sort((a, b) => a.name.localeCompare(b.name));
     // 不截断：配合滚动跟随，所有命令都能通过 ↑↓ 循环到达
     if (!q) return all;
     return all.filter((c) => c.name.toLowerCase().startsWith(q));
