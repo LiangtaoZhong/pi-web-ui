@@ -6,6 +6,8 @@ client/node_modules/
 dist/
 client/dist/
 public/
+!client/public/
+!client/public/favicon.svg
 
 # ─── Secrets — NEVER commit these ────────────────────────────────
 # Pi agent credentials live in ~/.pi/agent/auth.json (outside this repo)
