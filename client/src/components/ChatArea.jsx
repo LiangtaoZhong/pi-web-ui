@@ -78,6 +78,7 @@ export default function ChatArea({
   const cmdRunRef = useRef(false);   // 本次 prompt 是斜杠命令（输出重定向到面板）
   const cmdAgentRef = useRef(false); // 命令轮触发了 agent（等 agent_end 结束）
   const cmdPanelRef = useRef(null);
+  const [cmdFade, setCmdFade] = useState(false); // 命令面板淡出
   const inputRef = useRef(null);
   const manualHRef = useRef(null); // 输入框手动拉伸高度 (px)，实时 DOM 控制
 
@@ -96,6 +97,17 @@ export default function ChatArea({
     const el = cmdPanelRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [cmdPanel]);
+
+  // 命令完成/失败后 5 秒自动淡出
+  useEffect(() => {
+    if (!cmdPanel || cmdPanel.status === "running") {
+      setCmdFade(false);
+      return;
+    }
+    const t1 = setTimeout(() => setCmdFade(true), 5000);
+    const t2 = setTimeout(() => { setCmdFade(false); setCmdPanel(null); }, 5350);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [cmdPanel?.status, cmdPanel?.cmd]);
 
   // ── Message dedup helpers ─────────────────────────────────────────────
   // Merge tool results (from execution events) into a content block list.
@@ -856,47 +868,61 @@ export default function ChatArea({
               <Paper
                 ref={cmdPanelRef}
                 elevation={4}
-                sx={{
-                  position: "absolute",
-                  bottom: "100%",
-                  left: 0,
-                  right: 0,
-                  mb: 0.5,
-                  maxHeight: 300,
-                  overflow: "auto",
-                  zIndex: 20,
-                  borderRadius: 2,
-                  bgcolor: "#1B1B1A",
-                  border: "1px solid rgba(247,247,242,0.14)",
+                sx={(theme) => {
+                  const dark = theme.palette.mode === "dark";
+                  return {
+                    position: "absolute",
+                    bottom: "100%",
+                    left: 0,
+                    right: 0,
+                    mb: 0.5,
+                    maxHeight: 300,
+                    overflow: "auto",
+                    zIndex: 20,
+                    borderRadius: 2,
+                    bgcolor: dark ? "#1B1B1A" : "#FFFFFF",
+                    border: dark ? "1px solid rgba(247,247,242,0.14)" : "1px solid rgba(30,30,29,0.15)",
+                    opacity: cmdFade ? 0 : 1,
+                    transition: "opacity 0.35s ease",
+                  };
                 }}
               >
                 <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    px: 1.5,
-                    py: 0.75,
-                    borderBottom: "1px solid rgba(247,247,242,0.1)",
-                    position: "sticky",
-                    top: 0,
-                    bgcolor: "#1B1B1A",
-                    zIndex: 1,
+                  sx={(theme) => {
+                    const dark = theme.palette.mode === "dark";
+                    return {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      px: 1.5,
+                      py: 0.75,
+                      borderBottom: dark ? "1px solid rgba(247,247,242,0.1)" : "1px solid rgba(30,30,29,0.1)",
+                      position: "sticky",
+                      top: 0,
+                      bgcolor: dark ? "#1B1B1A" : "#FFFFFF",
+                      zIndex: 1,
+                    };
                   }}
                 >
-                  <CommandIcon sx={{ fontSize: 14, color: "#8B949E", flexShrink: 0 }} />
+                  <CommandIcon
+                    sx={(theme) => ({
+                      fontSize: 14,
+                      color: theme.palette.mode === "dark" ? "#8B949E" : "#6E6E68",
+                      flexShrink: 0,
+                    })}
+                  />
                   <Typography
-                    sx={{
+                    sx={(theme) => ({
                       flex: 1,
                       minWidth: 0,
                       fontFamily: "var(--mui-fontFamilies-monospace)",
                       fontSize: "0.72rem",
-                      color: "#F7F7F2",
+                      color: theme.palette.mode === "dark" ? "#F7F7F2" : "#141413",
                       fontWeight: 600,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                    }}
+                    })}
                   >
                     {cmdPanel.cmd}
                   </Typography>
@@ -904,19 +930,34 @@ export default function ChatArea({
                     <Chip
                       size="small"
                       label="运行中"
-                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(121,192,255,0.15)", color: "#79C0FF" }}
+                      sx={(theme) => ({
+                        height: 18,
+                        fontSize: "0.6rem",
+                        bgcolor: theme.palette.mode === "dark" ? "rgba(121,192,255,0.15)" : "rgba(26,115,232,0.12)",
+                        color: theme.palette.mode === "dark" ? "#79C0FF" : "#1A73E8",
+                      })}
                     />
                   ) : cmdPanel.status === "done" ? (
                     <Chip
                       size="small"
                       label="完成"
-                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(126,231,135,0.15)", color: "#7EE787" }}
+                      sx={(theme) => ({
+                        height: 18,
+                        fontSize: "0.6rem",
+                        bgcolor: theme.palette.mode === "dark" ? "rgba(126,231,135,0.15)" : "rgba(46,125,50,0.12)",
+                        color: theme.palette.mode === "dark" ? "#7EE787" : "#2E7D32",
+                      })}
                     />
                   ) : (
                     <Chip
                       size="small"
                       label="失败"
-                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(255,123,114,0.15)", color: "#FF7B72" }}
+                      sx={(theme) => ({
+                        height: 18,
+                        fontSize: "0.6rem",
+                        bgcolor: theme.palette.mode === "dark" ? "rgba(255,123,114,0.15)" : "rgba(192,57,43,0.12)",
+                        color: theme.palette.mode === "dark" ? "#FF7B72" : "#C0392B",
+                      })}
                     />
                   )}
                   <IconButton
@@ -932,26 +973,35 @@ export default function ChatArea({
                   </IconButton>
                 </Box>
                 <Box
-                  sx={{
-                    px: 1.5,
-                    py: 1,
-                    fontFamily: "var(--mui-fontFamilies-monospace)",
-                    fontSize: "0.72rem",
-                    lineHeight: 1.6,
+                  sx={(theme) => {
+                    const dark = theme.palette.mode === "dark";
+                    return {
+                      px: 1.5,
+                      py: 1,
+                      fontFamily: "var(--mui-fontFamilies-monospace)",
+                      fontSize: "0.72rem",
+                      lineHeight: 1.6,
+                      "& .cmd-out": { whiteSpace: "pre-wrap", wordBreak: "break-word" },
+                      "& .cmd-cmd": { whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 600 },
+                      "& .cmd-err": { whiteSpace: "pre-wrap", wordBreak: "break-word", color: dark ? "#FF7B72" : "#C0392B" },
+                      "& .cmd-ok": { whiteSpace: "pre-wrap", wordBreak: "break-word", color: dark ? "#7EE787" : "#2E7D32" },
+                    };
                   }}
                 >
                   {cmdPanel.lines.map((l, i) => (
                     <Box
                       key={i}
-                      sx={{
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
+                      className={
+                        l.type === "cmd" ? "cmd-cmd" :
+                        l.type === "err" ? "cmd-err" :
+                        l.type === "ok" ? "cmd-ok" : "cmd-out"
+                      }
+                      sx={(theme) => ({
                         color:
-                          l.type === "cmd" ? "#F7F7F2" :
-                          l.type === "err" ? "#FF7B72" :
-                          l.type === "ok" ? "#7EE787" : "#C9C9C4",
-                        fontWeight: l.type === "cmd" ? 600 : 400,
-                      }}
+                          l.type === "cmd" ? (theme.palette.mode === "dark" ? "#F7F7F2" : "#141413") :
+                          l.type === "out" ? (theme.palette.mode === "dark" ? "#C9C9C4" : "#4A4A47") :
+                          undefined,
+                      })}
                     >
                       {l.type === "cmd" ? `$ ${l.text}` : l.text}
                     </Box>
