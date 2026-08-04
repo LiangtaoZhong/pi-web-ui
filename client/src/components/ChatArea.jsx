@@ -27,6 +27,7 @@ import {
   Memory as MemoryIcon,
   Terminal as CommandIcon,
   Settings as SettingsIcon,
+  Close as CloseIcon,
 } from "@mui/icons-material";
 import socket from "../hooks/useSocket";
 import MessageBubble from "./MessageBubble";
@@ -72,6 +73,11 @@ export default function ChatArea({
   const [commands, setCommands] = useState([]);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdIndex, setCmdIndex] = useState(0);
+  // 斜杠命令执行面板
+  const [cmdPanel, setCmdPanel] = useState(null); // {cmd, lines:[{type,text}], status:'running'|'done'|'error'}
+  const cmdRunRef = useRef(false);   // 本次 prompt 是斜杠命令（输出重定向到面板）
+  const cmdAgentRef = useRef(false); // 命令轮触发了 agent（等 agent_end 结束）
+  const cmdPanelRef = useRef(null);
   const inputRef = useRef(null);
   const manualHRef = useRef(null); // 输入框手动拉伸高度 (px)，实时 DOM 控制
 
@@ -84,6 +90,12 @@ export default function ChatArea({
   const scrollDown = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
+
+  // 命令面板输出自动滚到底部
+  useEffect(() => {
+    const el = cmdPanelRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [cmdPanel]);
 
   // ── Message dedup helpers ─────────────────────────────────────────────
   // Merge tool results (from execution events) into a content block list.
@@ -120,6 +132,36 @@ export default function ChatArea({
     }
     seenSigsRef.current = set;
   }, []);
+
+  // ── 命令面板 helpers（斜杠命令输出显示于此）────────────────────────
+  const appendCmdLines = useCallback((lines) => {
+    setCmdPanel((prev) => (prev ? { ...prev, lines: [...prev.lines, ...lines] } : prev));
+  }, []);
+
+  const finishCmdPanel = useCallback((status) => {
+    setCmdPanel((prev) => (prev && prev.status === "running" ? { ...prev, status } : prev));
+    cmdRunRef.current = false;
+    cmdAgentRef.current = false;
+  }, []);
+
+  // 命令轮流式文本 → 面板最后一行
+  function cmdStreamDelta(delta) {
+    if (!delta) return;
+    if (delta.type === "text_start") {
+      setCmdPanel((prev) => (prev ? { ...prev, lines: [...prev.lines, { type: "out", text: "" }] } : prev));
+    } else if (delta.type === "text_delta") {
+      setCmdPanel((prev) => {
+        if (!prev || prev.lines.length === 0) return prev;
+        const lines = [...prev.lines];
+        const last = lines[lines.length - 1];
+        if (last && last.type === "out") {
+          lines[lines.length - 1] = { ...last, text: last.text + (delta.delta || "") };
+          return { ...prev, lines };
+        }
+        return { ...prev, lines: [...lines, { type: "out", text: delta.delta || "" }] };
+      });
+    }
+  }
 
   // Update a toolCall block IN PLACE inside completed messages
   const updateMsgTool = useCallback((tcid, patch) => {
@@ -166,10 +208,29 @@ export default function ChatArea({
           setStreamBlocks([]);
           toolResultsRef.current = {};
           seenSigsRef.current = new Set();
+          if (cmdRunRef.current) cmdAgentRef.current = true;
           break;
         case "agent_end":
         case "agent_settled":
           setLive(false);
+          if (cmdRunRef.current) {
+            // 命令轮：输出已由 message_end / pi_stderr 进面板，这里兜底补一次并结束
+            setCmdPanel((prev) => {
+              if (prev && !prev.lines.some((l) => l.type !== "cmd")) {
+                const text = (ev.messages || [])
+                  .filter((m) => m && m.role === "assistant" && m.content)
+                  .map((m) => extractText(m.content))
+                  .filter(Boolean)
+                  .join("\n");
+                if (text) return { ...prev, lines: [...prev.lines, { type: "out", text }] };
+              }
+              return prev;
+            });
+            setStreamBlocks([]);
+            toolResultsRef.current = {};
+            finishCmdPanel("done");
+            break;
+          }
           // Flush any final assistant messages from the run.
           // IMPORTANT: pass the RAW content (merge happens inside addAssistantMessage)
           // so the dedup signature matches what message_end already added.
@@ -189,13 +250,20 @@ export default function ChatArea({
           }
           break;
         case "message_update":
-          handleDelta(ev.assistantMessageEvent);
+          if (cmdRunRef.current) cmdStreamDelta(ev.assistantMessageEvent);
+          else handleDelta(ev.assistantMessageEvent);
           break;
         case "message_end":
           if (ev.message?.role === "assistant" && ev.message.content) {
             setStreamBlocks([]);
-            // Pass RAW content (merge happens inside addAssistantMessage)
-            addAssistantMessage(ev.message.content, { model: ev.message.model });
+            if (cmdRunRef.current) {
+              // 命令轮：assistant 文本进命令面板，不进聊天流
+              const text = extractText(ev.message.content);
+              if (text) appendCmdLines([{ type: "out", text }]);
+            } else {
+              // Pass RAW content (merge happens inside addAssistantMessage)
+              addAssistantMessage(ev.message.content, { model: ev.message.model });
+            }
           }
           break;
         case "tool_execution_start":
@@ -227,7 +295,12 @@ export default function ChatArea({
           addToast("✅ 压缩完成");
           break;
         case "extension_ui_request":
-          handleExtUI(ev, sid, addToast);
+          if (cmdRunRef.current && ev.method === "notify") {
+            const icon = ev.notifyType === "error" ? "❌" : ev.notifyType === "warning" ? "⚠️" : "ℹ️";
+            appendCmdLines([{ type: ev.notifyType === "error" ? "err" : "out", text: icon + " " + (ev.message || "") }]);
+          } else {
+            handleExtUI(ev, sid, addToast);
+          }
           break;
       }
     }
@@ -250,6 +323,17 @@ export default function ChatArea({
         const st = resp.data;
         onModelsLoaded(undefined, st.name || st.id || "");
         addToast("已切换模型: " + (st.name || st.id || ""));
+      } else if (resp?.command === "prompt") {
+        // 斜杠命令执行结果
+        if (!cmdRunRef.current) return;
+        if (!resp.success) {
+          finishCmdPanel("error");
+        } else {
+          // 扩展命令立即返回；若随后有 agent 输出则等 agent_end 再结束
+          setTimeout(() => {
+            if (cmdRunRef.current && !cmdAgentRef.current) finishCmdPanel("done");
+          }, 800);
+        }
       }
     }
 
@@ -258,6 +342,9 @@ export default function ChatArea({
     }
 
     function onWsUpd({ workspace: ws }) { setWorkspace(ws); }
+    function onStderr(d) {
+      if (cmdRunRef.current && d?.text) appendCmdLines([{ type: "err", text: d.text.trimEnd() }]);
+    }
     function onErr(d) { addToast(d.error, true); setLive(false); }
     function onDC(d) {
       // An expected restart (workspace switch) doesn't mean something broke
@@ -272,6 +359,7 @@ export default function ChatArea({
     socket.on("pi_error", onErr);
     socket.on("pi_disconnected", onDC);
     socket.on("workspace_updated", onWsUpd);
+    socket.on("pi_stderr", onStderr);
 
     // Fetch model info + commands, and poll context usage every 5s.
     // The freshly-spawned pi process needs a moment to become ready, so
@@ -319,8 +407,9 @@ export default function ChatArea({
       socket.off("pi_error", onErr);
       socket.off("pi_disconnected", onDC);
       socket.off("workspace_updated", onWsUpd);
+      socket.off("pi_stderr", onStderr);
     };
-  }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults, onModelsLoaded]);
+  }, [sid, addToast, addAssistantMessage, initSeenSigs, mergeToolResults, onModelsLoaded, appendCmdLines, finishCmdPanel]);
 
   useEffect(() => {
     scrollDown();
@@ -387,6 +476,22 @@ export default function ChatArea({
   function send() {
     const txt = input.trim();
     if ((!txt && !imgs.length) || !sid || live) return;
+    const isCmd = txt.startsWith("/");
+    if (isCmd) {
+      // 斜杠命令：输出显示在命令面板（输入框上方终端风格面板），不进聊天流
+      cmdRunRef.current = true;
+      cmdAgentRef.current = false;
+      setCmdPanel({ cmd: txt, lines: [{ type: "cmd", text: txt }], status: "running" });
+      socket.emit("prompt", {
+        sessionId: sid,
+        message: txt,
+        images: imgs.length > 0 ? imgs : undefined,
+      });
+      setInput("");
+      setImgs([]);
+      return;
+    }
+    setCmdPanel(null); // 普通消息时关闭残留命令面板
     const msgText = txt || "(image)";
     setMsgs((prev) => [...prev, { role: "user", content: msgText, ts: Date.now() }]);
     socket.emit("prompt", {
@@ -747,6 +852,114 @@ export default function ChatArea({
               </Paper>
             )}
 
+            {cmdPanel && (
+              <Paper
+                ref={cmdPanelRef}
+                elevation={4}
+                sx={{
+                  position: "absolute",
+                  bottom: "100%",
+                  left: 0,
+                  right: 0,
+                  mb: 0.5,
+                  maxHeight: 300,
+                  overflow: "auto",
+                  zIndex: 20,
+                  borderRadius: 2,
+                  bgcolor: "#1B1B1A",
+                  border: "1px solid rgba(247,247,242,0.14)",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.75,
+                    borderBottom: "1px solid rgba(247,247,242,0.1)",
+                    position: "sticky",
+                    top: 0,
+                    bgcolor: "#1B1B1A",
+                    zIndex: 1,
+                  }}
+                >
+                  <CommandIcon sx={{ fontSize: 14, color: "#8B949E", flexShrink: 0 }} />
+                  <Typography
+                    sx={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontFamily: "var(--mui-fontFamilies-monospace)",
+                      fontSize: "0.72rem",
+                      color: "#F7F7F2",
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {cmdPanel.cmd}
+                  </Typography>
+                  {cmdPanel.status === "running" ? (
+                    <Chip
+                      size="small"
+                      label="运行中"
+                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(121,192,255,0.15)", color: "#79C0FF" }}
+                    />
+                  ) : cmdPanel.status === "done" ? (
+                    <Chip
+                      size="small"
+                      label="完成"
+                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(126,231,135,0.15)", color: "#7EE787" }}
+                    />
+                  ) : (
+                    <Chip
+                      size="small"
+                      label="失败"
+                      sx={{ height: 18, fontSize: "0.6rem", bgcolor: "rgba(255,123,114,0.15)", color: "#FF7B72" }}
+                    />
+                  )}
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setCmdPanel(null);
+                      cmdRunRef.current = false;
+                      cmdAgentRef.current = false;
+                    }}
+                    sx={{ color: "text.secondary", p: 0.25 }}
+                  >
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Box>
+                <Box
+                  sx={{
+                    px: 1.5,
+                    py: 1,
+                    fontFamily: "var(--mui-fontFamilies-monospace)",
+                    fontSize: "0.72rem",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {cmdPanel.lines.map((l, i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        color:
+                          l.type === "cmd" ? "#F7F7F2" :
+                          l.type === "err" ? "#FF7B72" :
+                          l.type === "ok" ? "#7EE787" : "#C9C9C4",
+                        fontWeight: l.type === "cmd" ? 600 : 400,
+                      }}
+                    >
+                      {l.type === "cmd" ? `$ ${l.text}` : l.text}
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            )}
+
             {/* Claude 风格输入框：圆角矩形、细边框、聚焦橙边 */}
             <Paper
               variant="outlined"
@@ -958,6 +1171,16 @@ export default function ChatArea({
       </Box>
     </>
   );
+}
+
+// 从 assistant content blocks 中提取纯文本
+function extractText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((b) => b && b.type === "text" && b.text)
+    .map((b) => b.text)
+    .join("\n");
 }
 
 function handleExtUI(ev, sid, addToast) {

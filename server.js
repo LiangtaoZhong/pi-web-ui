@@ -721,9 +721,14 @@ io.on("connection", (socket) => {
     if (!meta) { socket.emit("pi_error", { error: "Session not found" }); return; }
     // Persist the user message so it survives refresh / server restart,
     // regardless of which client sent it.
+    // Slash commands are shown in the client's command panel (not the chat
+    // stream), so they are not persisted as chat messages.
     if (message && String(message).trim()) {
-      meta.messages.push({ role: "user", content: String(message).trim(), timestamp: Date.now() });
-      saveMeta();
+      const text = String(message).trim();
+      if (!text.startsWith("/")) {
+        meta.messages.push({ role: "user", content: text, timestamp: Date.now() });
+        saveMeta();
+      }
     }
     const cmd = { type: "prompt", message };
     if (images && images.length > 0) {
