@@ -757,6 +757,10 @@ io.on("connection", (socket) => {
     if (!sendRPC(sessionId, { type: "set_model", provider, modelId })) socket.emit("pi_error", { error: "Cannot set model" });
   });
 
+  socket.on("compact", ({ sessionId }) => {
+    if (!sendRPC(sessionId, { type: "compact" })) socket.emit("pi_error", { error: "Cannot compact" });
+  });
+
   socket.on("set_thinking_level", ({ sessionId, level }) => {
     if (!sendRPC(sessionId, { type: "set_thinking_level", level })) socket.emit("pi_error", { error: "Cannot set thinking level" });
   });

@@ -175,6 +175,75 @@ export default function ChatArea({
     }
   }
 
+  // ── 内置命令（Web UI 本地处理，不发送给 LLM）─────────────────────────
+  const BUILTIN_ACTIONS = {
+    model: () => {
+      const list = models.length
+        ? models.map((m) => "  " + (m.name || m.id) + (model === (m.name || m.id) ? "  ✓" : "")).join("\n")
+        : "  无可用模型";
+      appendCmdLines([{ type: "out", text: "可用模型:\n" + list + "\n\n提示：点击输入框右下角的模型按钮切换" }]);
+      finishCmdPanel("done");
+    },
+    compact: () => {
+      socket.emit("compact", { sessionId: sid });
+      appendCmdLines([{ type: "out", text: "♻️ 正在压缩上下文..." }]);
+      // 完成由 onResponse(compact) / compaction_end 事件处理
+    },
+    session: () => {
+      const rows = [
+        "名称: " + (name || "未命名"),
+        "工作区: " + (workspace || "未设置"),
+        "消息数: " + msgs.length,
+        "模型: " + (model || "-"),
+        ctx
+          ? "上下文: " + (ctx.tokens || 0) + " / " + (ctx.contextWindow || 0) + " tokens (" + (ctx.percent ?? "-") + "%)"
+          : "上下文: -",
+      ];
+      appendCmdLines([{ type: "out", text: rows.join("\n") }]);
+      finishCmdPanel("done");
+    },
+    hotkeys: () => {
+      appendCmdLines([{ type: "out", text: ["Enter — 发送", "Shift+Enter — 换行", "/ — 命令", "↑↓ — 命令补全导航", "Tab — 选中补全项", "Esc — 关闭命令面板"].join("\n") }]);
+      finishCmdPanel("done");
+    },
+    settings: () => {
+      onOpenSettings();
+      appendCmdLines([{ type: "ok", text: "已打开设置对话框" }]);
+      finishCmdPanel("done");
+    },
+    new: () => {
+      socket.emit("session_create", { name: "Session " + new Date().toLocaleTimeString("zh-CN"), workspace: "" });
+      appendCmdLines([{ type: "ok", text: "已创建新会话，请在左侧会话列表中选择" }]);
+      finishCmdPanel("done");
+    },
+    name: (arg) => {
+      if (!arg) {
+        appendCmdLines([{ type: "err", text: "用法: /name <新会话名>" }]);
+        finishCmdPanel("error");
+        return;
+      }
+      fetch(`/api/sessions/${sid}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: arg }),
+      })
+        .then((r) => (r.ok ? r : Promise.reject(new Error("HTTP " + r.status))))
+        .then(() => { appendCmdLines([{ type: "ok", text: "会话已重命名为: " + arg }]); finishCmdPanel("done"); })
+        .catch(() => { appendCmdLines([{ type: "err", text: "重命名失败" }]); finishCmdPanel("error"); });
+    },
+    help: () => {
+      const builtin = Object.keys(BUILTIN_ACTIONS);
+      const ext = commands
+        .filter((c) => c.name && !c.name.startsWith("skill:") && !builtin.includes(c.name.split(":")[0]))
+        .map((c) => "  /" + c.name + (c.description ? "  — " + c.description : ""));
+      appendCmdLines([{
+        type: "out",
+        text: "内置命令:\n" + builtin.map((c) => "  /" + c).join("\n") + "\n\n扩展 / 模板命令:\n" + (ext.join("\n") || "  无"),
+      }]);
+      finishCmdPanel("done");
+    },
+  };
+
   // Update a toolCall block IN PLACE inside completed messages
   const updateMsgTool = useCallback((tcid, patch) => {
     setMsgs((prev) =>
@@ -301,10 +370,12 @@ export default function ChatArea({
           });
           break;
         case "compaction_start":
-          addToast("♻️ 上下文压缩中...");
+          if (cmdRunRef.current) appendCmdLines([{ type: "out", text: "♻️ 上下文压缩中..." }]);
+          else addToast("♻️ 上下文压缩中...");
           break;
         case "compaction_end":
-          addToast("✅ 压缩完成");
+          if (cmdRunRef.current) appendCmdLines([{ type: "ok", text: "✅ 压缩完成" }]);
+          else addToast("✅ 压缩完成");
           break;
         case "extension_ui_request":
           if (cmdRunRef.current && ev.method === "notify") {
@@ -346,6 +417,13 @@ export default function ChatArea({
             if (cmdRunRef.current && !cmdAgentRef.current) finishCmdPanel("done");
           }, 800);
         }
+      } else if (resp?.command === "compact") {
+        if (!cmdRunRef.current) return;
+        const data = resp.data;
+        const text = typeof data === "string" ? data
+          : data?.summary || data?.text || data?.message || "";
+        if (text) appendCmdLines([{ type: "out", text }]);
+        finishCmdPanel("done");
       }
     }
 
@@ -490,7 +568,20 @@ export default function ChatArea({
     if ((!txt && !imgs.length) || !sid || live) return;
     const isCmd = txt.startsWith("/");
     if (isCmd) {
-      // 斜杠命令：输出显示在命令面板（输入框上方终端风格面板），不进聊天流
+      const cmdName = txt.slice(1).split(/\s+/)[0].toLowerCase();
+      const builtin = BUILTIN_ACTIONS[cmdName];
+      if (builtin) {
+        // 内置命令：Web UI 本地执行（不发送给 LLM），输出到命令面板
+        cmdRunRef.current = true;
+        cmdAgentRef.current = false;
+        setCmdPanel({ cmd: txt, lines: [{ type: "cmd", text: txt }], status: "running" });
+        setInput("");
+        setImgs([]);
+        const arg = txt.slice(cmdName.length + 2).trim();
+        builtin(arg);
+        return;
+      }
+      // 其他斜杠命令（扩展 / skill / 模板）：输出显示在命令面板，不进聊天流
       cmdRunRef.current = true;
       cmdAgentRef.current = false;
       setCmdPanel({ cmd: txt, lines: [{ type: "cmd", text: txt }], status: "running" });
