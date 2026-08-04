@@ -426,8 +426,9 @@ export default function ChatArea({
     const all = [...commands]
       .filter((c) => c.name && !c.name.startsWith("skill:"))
       .sort((a, b) => a.name.localeCompare(b.name));
-    if (!q) return all.slice(0, 30);
-    return all.filter((c) => c.name.toLowerCase().startsWith(q)).slice(0, 30);
+    // 不截断：配合滚动跟随，所有命令都能通过 ↑↓ 循环到达
+    if (!q) return all;
+    return all.filter((c) => c.name.toLowerCase().startsWith(q));
   })();
 
   function pickCmd(c) {
@@ -459,6 +460,14 @@ export default function ChatArea({
 
   // 当前高亮的命令索引（供上下键导航）
   const activeIndex = Math.min(cmdIndex, Math.max(0, filteredCmds.length - 1));
+
+  // 补全窗口滚动跟随高亮项：防止高亮移出可视区（“焦点离开补全窗口”的根因）
+  const cmdListRef = useRef(null);
+  useEffect(() => {
+    if (!cmdOpen) return;
+    const el = cmdListRef.current?.querySelector(".Mui-selected");
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, cmdOpen]);
 
 
   function onKeyDown(e) {
@@ -706,7 +715,7 @@ export default function ChatArea({
                   borderRadius: 2,
                 }}
               >
-                <List dense disablePadding>
+                <List dense disablePadding ref={cmdListRef}>
                   {filteredCmds.map((c, idx) => (
                     <ListItemButton
                       key={c.name}
