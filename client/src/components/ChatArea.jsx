@@ -230,7 +230,7 @@ export default function ChatArea({
             setCmdPanel((prev) => {
               if (prev && !prev.lines.some((l) => l.type !== "cmd")) {
                 const text = (ev.messages || [])
-                  .filter((m) => m && m.role === "assistant" && m.content)
+                  .filter((m) => m && (m.role === "assistant" || m.role === "custom") && m.content)
                   .map((m) => extractText(m.content))
                   .filter(Boolean)
                   .join("\n");
@@ -266,13 +266,13 @@ export default function ChatArea({
           else handleDelta(ev.assistantMessageEvent);
           break;
         case "message_end":
-          if (ev.message?.role === "assistant" && ev.message.content) {
+          if (ev.message?.content && (ev.message.role === "assistant" || ev.message.role === "custom")) {
             setStreamBlocks([]);
             if (cmdRunRef.current) {
-              // 命令轮：assistant 文本进命令面板，不进聊天流
+              // 命令轮：assistant / custom 文本进命令面板，不进聊天流
               const text = extractText(ev.message.content);
               if (text) appendCmdLines([{ type: "out", text }]);
-            } else {
+            } else if (ev.message.role === "assistant") {
               // Pass RAW content (merge happens inside addAssistantMessage)
               addAssistantMessage(ev.message.content, { model: ev.message.model });
             }
